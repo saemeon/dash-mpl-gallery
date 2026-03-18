@@ -18,6 +18,11 @@
     "cSpell.enableFiletypes": [
         "!python"
     ],
+    "cSpell.words": [
+        "Plotly",
+        "plotly",
+        "Dash"
+    ],
     "yaml.customTags": [
         "!reference sequence"
     ],

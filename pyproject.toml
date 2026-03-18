@@ -1,8 +1,8 @@
 [project]
-name = "mypackage"
+name = "s5ndt"
 dynamic = ["version"]
-description = "A short description of your package"
-keywords = ["keyword1", "keyword2"]
+description = "s5n dash tools — Plotly Dash utilities"
+keywords = ["plotly", "dash", "visualization", "dashboard"]
 classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -20,11 +20,14 @@ maintainers = [
     { name = "Simon Niederberger", email = "s.niederberger@hotmail.com" },
 ]
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "dash",
+    "plotly",
+]
 
 [project.urls]
-Homepage = "https://github.com/saemeon/mypackage"
-Repository = "https://github.com/saemeon/mypackage"
+Homepage = "https://github.com/saemeon/s5ndt"
+Repository = "https://github.com/saemeon/s5ndt"
 
 [dependency-groups]
 test = ["pytest", "pytest-cov"]
@@ -47,22 +50,22 @@ requires = ["setuptools>=61.0", "wheel", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
-write_to = "src/mypackage/_version.py"
+write_to = "src/s5ndt/_version.py"
 version_scheme = "post-release"
 local_scheme = "no-local-version"
 
 [tool.setuptools.dynamic]
-version = { attr = "mypackage._version.__version__" }
+version = { attr = "s5ndt._version.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-mypackage = ["py.typed"]
+s5ndt = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=src/mypackage --cov-report=term-missing"
+addopts = "--cov=src/s5ndt --cov-report=term-missing"
 
 [tool.ty.src]
 include = ["src"]

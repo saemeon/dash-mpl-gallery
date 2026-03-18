@@ -1,10 +1,10 @@
-site_name: mypackage
-site_description: A short description of your package
+site_name: s5ndt
+site_description: s5n dash tools — Plotly Dash utilities
 site_author: Simon Niederberger
-site_url: https://saemeon.github.io/mypackage/
+site_url: https://saemeon.github.io/s5ndt/
 
-repo_url: https://github.com/saemeon/mypackage
-repo_name: saemeon/mypackage
+repo_url: https://github.com/saemeon/s5ndt
+repo_name: saemeon/s5ndt
 
 copyright: "Copyright &copy; 2026 Simon Niederberger"
 
@@ -135,4 +135,4 @@ extra:
     default: latest
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/saemeon/mypackage
+      link: https://github.com/saemeon/s5ndt
