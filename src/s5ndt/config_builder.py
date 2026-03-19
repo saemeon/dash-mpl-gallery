@@ -407,20 +407,23 @@ def _coerce(field: _Field, value: Any) -> Any:
     if empty:
         return None if field.optional else field.default
 
-    if field.type == "date":
-        return date.fromisoformat(value)
-    if field.type == "int":
-        return int(value)
-    if field.type == "float":
-        return float(value)
-    if field.type == "list":
-        elem_type = field.args[0] if field.args else str
-        return [elem_type(x.strip()) for x in value.split(",")]
-    if field.type == "tuple":
-        parts = [x.strip() for x in value.split(",")]
-        if field.args:
-            return tuple(t(v) for t, v in zip(field.args, parts))
-        return tuple(parts)
+    try:
+        if field.type == "date":
+            return date.fromisoformat(value)
+        if field.type == "int":
+            return int(value)
+        if field.type == "float":
+            return float(value)
+        if field.type == "list":
+            elem_type = field.args[0] if field.args else str
+            return [elem_type(x.strip()) for x in value.split(",")]
+        if field.type == "tuple":
+            parts = [x.strip() for x in value.split(",")]
+            if field.args:
+                return tuple(t(v) for t, v in zip(field.args, parts))
+            return tuple(parts)
+    except (ValueError, TypeError):
+        return field.default
     if field.type == "literal":
         return value
     return value or ""

@@ -126,6 +126,7 @@ def _build_capture_js(
                 if (!n_clicks && !n_intervals) {{
                     return window.dash_clientside.no_update;
                 }}
+                if (!window.Plotly) return window.dash_clientside.no_update;
                 const container = document.getElementById('{graph_id}');
                 if (!container) return window.dash_clientside.no_update;
                 const graphDiv =
@@ -159,10 +160,13 @@ def _build_capture_js(
                     'position:fixed;left:-9999px;width:'
                     + ({dim_w}) + 'px;height:' + ({dim_h}) + 'px';
                 document.body.appendChild(tmp);
-                await Plotly.newPlot(tmp, data, layout);
-                const img = await Plotly.toImage(tmp, opts);
-                document.body.removeChild(tmp);
-                return img;
+                try {{
+                    await Plotly.newPlot(tmp, data, layout);
+                    const img = await Plotly.toImage(tmp, opts);
+                    return img;
+                }} finally {{
+                    document.body.removeChild(tmp);
+                }}
             }}"""
     )
 
@@ -406,6 +410,8 @@ def graph_exporter(
         *field_values, autogen, _img_b64, _fig_data = args
         if not autogen:
             return dash.no_update
+        if _has_snapshot and not _img_b64:
+            return dash.no_update  # capture not yet available
         kwargs = config.build_kwargs(tuple(field_values))
         data = _call_renderer(
             renderer, _has_fig_data, _has_snapshot, _fig_data, _img_b64 or "", kwargs

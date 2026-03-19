@@ -68,6 +68,8 @@ def build_wizard(
     if isinstance(trigger, str):
         trigger_component = html.Button(trigger, id=default_trigger_id)
     else:
+        if not hasattr(trigger, "id") or not trigger.id:
+            raise ValueError("Custom trigger component must have an 'id' attribute.")
         trigger_component = trigger
     trigger_listen_id = trigger_component.id
 
@@ -75,14 +77,13 @@ def build_wizard(
         id=modal_id,
         style={"display": "none"},
         children=[
-            # overlay (decorative, does not capture clicks)
+            # overlay — blocks interaction with underlying UI while open
             html.Div(
                 style={
                     "position": "fixed",
                     "inset": "0",
                     "background": "rgba(0,0,0,0.4)",
                     "zIndex": 1000,
-                    "pointerEvents": "none",
                 }
             ),
             # dialog
