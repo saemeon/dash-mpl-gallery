@@ -30,6 +30,62 @@ from dash_fn_tools._spec import FieldHook, FieldSpec
 
 _registered_config_ids: set[str] = set()
 
+
+# --- FieldRef ---
+
+
+class FieldRef:
+    """A reference to a single field in a :class:`Config`.
+
+    Behaves as a string equal to the field's component ID, so it can be used
+    directly as a dict key or passed anywhere a component ID string is expected.
+    Also exposes :attr:`id`, :attr:`state`, and :attr:`output` for explicit use.
+
+    Access via attribute on :class:`Config`::
+
+        cfg.title           # FieldRef for the "title" field
+        cfg.title.id        # "_dft_field_render_title"
+        cfg.title.state     # State("_dft_field_render_title", "value")
+        cfg.title.output    # Output("_dft_field_render_title", "value")
+        dirty.get(cfg.title)  # works — FieldRef hashes and compares as its ID
+    """
+
+    def __init__(self, component_id: str, prop: str) -> None:
+        self._component_id = component_id
+        self._prop = prop
+
+    @property
+    def id(self) -> str:
+        """The Dash component ID string."""
+        return self._component_id
+
+    @property
+    def state(self) -> State:
+        """``State(id, prop)`` ready to pass to a callback."""
+        return State(self._component_id, self._prop)
+
+    @property
+    def output(self) -> Output:
+        """``Output(id, prop)`` ready to pass to a callback."""
+        return Output(self._component_id, self._prop)
+
+    # --- string-like behaviour ---
+
+    def __str__(self) -> str:
+        return self._component_id
+
+    def __repr__(self) -> str:
+        return f"FieldRef({self._component_id!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, FieldRef):
+            return self._component_id == other._component_id
+        return self._component_id == other
+
+    def __hash__(self) -> int:
+        return hash(self._component_id)
+
+
 # --- field descriptor ---
 
 
@@ -158,6 +214,18 @@ class Config:
             State(store_id, "data"),
             prevent_initial_call=True,
         )
+
+    def __getattr__(self, name: str) -> FieldRef:
+        # Only called when normal attribute lookup fails.
+        for f in self._fields:
+            if f.name == name:
+                prop = (
+                    f.spec.component_prop
+                    if f.spec and f.spec.component
+                    else "date" if f.type in ("date", "datetime") else "value"
+                )
+                return FieldRef(field_id(self._config_id, name), prop)
+        raise AttributeError(f"Config has no field {name!r}")
 
     def build_kwargs(self, values: tuple) -> dict:
         return _build_kwargs(self._fields, values)
