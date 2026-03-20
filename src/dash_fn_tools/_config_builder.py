@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import copy
 import inspect
+import json
+import pathlib
 import types
 import warnings
-from enum import Enum
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from enum import Enum
 from typing import (
     Annotated,
     Any,
@@ -151,7 +153,14 @@ class Config:
                         results.append(dash.no_update)
                         continue
                     val = hook.get_default(*resolved)
-                    results.append(val.name if isinstance(val, Enum) else val)
+                    if isinstance(val, Enum):
+                        results.append(val.name)
+                    elif isinstance(val, dict):
+                        results.append(json.dumps(val, indent=2))
+                    elif isinstance(val, pathlib.Path):
+                        results.append(str(val))
+                    else:
+                        results.append(val)
             return results
 
     def register_restore_callback(self, restore_input: Input) -> None:
@@ -224,6 +233,10 @@ class Config:
                     results.append(", ".join(str(v) for v in val) if val else "")
                 elif f.type == "enum":
                     results.append(val.name if isinstance(val, Enum) else val)
+                elif f.type == "dict":
+                    results.append(json.dumps(val, indent=2) if val is not None else "")
+                elif f.type == "path":
+                    results.append(str(val) if val is not None else "")
                 else:
                     results.append(val if val is not None else "")
             return results
@@ -271,6 +284,8 @@ def build_config(
         * ``"datetime"`` → ``dcc.DatePickerSingle`` + ``dcc.Input(type="text")``
         * ``"literal"`` → ``dcc.Dropdown``
         * ``"enum"`` → ``dcc.Dropdown`` (from ``Enum`` subclass)
+        * ``"dict"`` → ``dcc.Textarea`` (JSON, coerced via ``json.loads``)
+        * ``"path"`` → ``dcc.Input(type="text")`` (coerced via ``pathlib.Path``)
         * ``"list"`` / ``"tuple"`` → ``dcc.Input(type="text")``
         * ``"label"`` → ``html.Label`` on every field label
     class_names :
@@ -429,6 +444,10 @@ def _infer_type(annotation: Any, default: Any) -> tuple[str, tuple, bool]:
         return "literal", args, False
     if inspect.isclass(annotation) and issubclass(annotation, Enum):
         return "enum", (annotation,), False
+    if annotation is dict or origin is dict:
+        return "dict", (), False
+    if annotation is pathlib.Path:
+        return "path", (), False
     return "str", (), False
 
 
@@ -649,6 +668,26 @@ def _make_component(config_id: str, f: _Field, spec: FieldSpec, fid: str) -> Any
             style=spec.style,
             className=spec.class_name,
         )
+    if f.type == "dict":
+        default_str = json.dumps(f.default, indent=2) if f.default else ""
+        return dcc.Textarea(
+            id=fid,
+            value=default_str,
+            placeholder='{"key": "value"}',
+            debounce=True,
+            style={"fontFamily": "monospace", "width": "100%", **(spec.style or {})},
+            className=spec.class_name,
+        )
+    if f.type == "path":
+        return dcc.Input(
+            id=fid,
+            type="text",
+            value=str(f.default) if f.default is not None else "",
+            placeholder="/path/to/file",
+            debounce=True,
+            style=spec.style,
+            className=spec.class_name,
+        )
     return dcc.Input(
         id=fid,
         type="text",
@@ -694,6 +733,13 @@ def _coerce(f: _Field, value: Any) -> Any:
             return enum_cls[value]
         except KeyError:
             return f.default
+    if f.type == "dict":
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return f.default
+    if f.type == "path":
+        return pathlib.Path(value)
     return value or ""
 
 
