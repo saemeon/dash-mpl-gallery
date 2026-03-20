@@ -162,6 +162,100 @@ class Config:
     def build_kwargs(self, values: tuple) -> dict:
         return _build_kwargs(self._fields, values)
 
+    def build_kwargs_validated(
+        self, values: tuple
+    ) -> tuple[dict, dict[str, str]]:
+        """Like :meth:`build_kwargs` but also validates each field.
+
+        Returns ``(kwargs, errors)`` where ``errors`` maps field names to
+        human-readable error messages.  Pass ``errors`` to
+        :meth:`invalid_outputs` to surface them back to the form.
+
+        Example::
+
+            @app.callback(
+                Output("result", "children"),
+                *cfg.validation_outputs,
+                Input("apply", "n_clicks"),
+                *cfg.states,
+            )
+            def on_apply(_n, *values):
+                kwargs, errors = cfg.build_kwargs_validated(values)
+                if errors:
+                    return dash.no_update, *cfg.invalid_outputs(errors)
+                return do_work(**kwargs), *cfg.invalid_outputs({})
+        """
+        it = iter(values)
+        kwargs: dict = {}
+        errors: dict[str, str] = {}
+        for f in self._fields:
+            if f.type == "datetime":
+                date_val = next(it)
+                time_val = next(it)
+                if date_val is None:
+                    if not f.optional and f.default is None:
+                        errors[f.name] = "Required"
+                    kwargs[f.name] = None if f.optional else f.default
+                else:
+                    time_str = time_val or "00:00"
+                    if len(time_str) == 4:
+                        time_str = "0" + time_str
+                    try:
+                        kwargs[f.name] = datetime.fromisoformat(
+                            f"{date_val}T{time_str}"
+                        )
+                    except ValueError:
+                        errors[f.name] = "Invalid time (use HH:MM)"
+                        kwargs[f.name] = None if f.optional else f.default
+            else:
+                raw = next(it)
+                err = _validate(f, raw)
+                if err:
+                    errors[f.name] = err
+                kwargs[f.name] = _coerce(f, raw)
+        return kwargs, errors
+
+    @property
+    def validation_outputs(self) -> list[Output]:
+        """``Output`` objects for the error spans of each validatable field.
+
+        Each validatable field produces two outputs: the error message text
+        and its visibility style.  Pass to a callback decorator alongside
+        your normal outputs.  Pair with :meth:`invalid_outputs` to compute
+        the return values.
+
+        Only covers fields whose component is ``dcc.Input`` (types: ``str``,
+        ``int``, ``float``, ``list``, ``tuple``, ``path``).
+        """
+        result = []
+        for f in self._fields:
+            if not (f.spec and f.spec.component) and f.type in _VALIDATABLE:
+                err_id = f"_dft_err_{self._config_id}_{f.name}"
+                result.append(Output(err_id, "children", allow_duplicate=True))
+                result.append(Output(err_id, "style", allow_duplicate=True))
+        return result
+
+    def invalid_outputs(self, errors: dict[str, str]) -> list:
+        """Convert an errors dict to a flat list of values for :attr:`validation_outputs`.
+
+        Each validatable field contributes two values: the error message
+        (or ``""`` when valid) and its CSS style dict.
+        Pass ``{}`` (empty dict) to clear all error states.
+        """
+        result = []
+        for f in self._fields:
+            if not (f.spec and f.spec.component) and f.type in _VALIDATABLE:
+                msg = errors.get(f.name, "")
+                result.append(msg)
+                result.append(
+                    {
+                        "color": "#d9534f",
+                        "fontSize": "0.8em",
+                        "display": "block" if msg else "none",
+                    }
+                )
+        return result
+
     def register_populate_callback(self, open_input: Input) -> None:
         """Register a single callback that populates all hooked fields on open.
 
@@ -636,6 +730,34 @@ def _get_fields(
     return fields
 
 
+# Field types whose primary component is dcc.Input and supports the `invalid` prop.
+_VALIDATABLE = frozenset({"str", "int", "float", "list", "tuple", "path"})
+
+
+def _validate(f: _Field, value: Any) -> str | None:
+    """Return an error message if value fails validation for field f, else None."""
+    if f.type not in _VALIDATABLE:
+        return None
+    empty = value is None or value == ""
+    if empty:
+        return "Required" if (not f.optional and f.default is None) else None
+    try:
+        if f.type == "int":
+            int(value)
+        elif f.type == "float":
+            float(value)
+        elif f.type == "list":
+            elem_type = f.args[0] if f.args else str
+            [elem_type(x.strip()) for x in str(value).split(",")]
+        elif f.type == "tuple":
+            parts = [x.strip() for x in str(value).split(",")]
+            if f.args:
+                tuple(t(v) for t, v in zip(f.args, parts, strict=False))
+    except (ValueError, TypeError):
+        return "Invalid value"
+    return None
+
+
 def _check_visible(value: Any, op: str, expected: Any) -> bool:
     """Evaluate a single visibility condition at render time (Python side)."""
     if op == "==":
@@ -701,6 +823,14 @@ def _build_field(
     if spec.description:
         children.append(
             html.Small(spec.description, style={"color": "#666", "display": "block"})
+        )
+    if f.type in _VALIDATABLE:
+        children.append(
+            html.Small(
+                "",
+                id=f"_dft_err_{config_id}_{f.name}",
+                style={"color": "#d9534f", "fontSize": "0.8em", "display": "none"},
+            )
         )
     return html.Div(children, style=wrapper_style or None)
 
@@ -790,7 +920,9 @@ def _make_component(config_id: str, f: _Field, spec: FieldSpec, fid: str) -> Any
     if f.type == "enum":
         enum_cls = f.args[0]
         members = list(enum_cls)
-        default_name = f.default.name if isinstance(f.default, enum_cls) else members[0].name
+        default_name = (
+            f.default.name if isinstance(f.default, enum_cls) else members[0].name
+        )
         return dcc.Dropdown(
             id=fid,
             options=[{"label": m.name, "value": m.name} for m in members],
