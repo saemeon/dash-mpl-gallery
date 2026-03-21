@@ -25,6 +25,15 @@ def _caller_name() -> str:
     return "__main__"
 
 
+def _in_jupyter() -> bool:
+    """Return True when running inside a Jupyter kernel."""
+    try:
+        from IPython import get_ipython  # noqa: PLC0415
+        return get_ipython().__class__.__name__ == "ZMQInteractiveShell"
+    except (ImportError, AttributeError):
+        return False
+
+
 class Page:
     """Ordered collection of interact panels assembled into a Dash app.
 
@@ -154,20 +163,34 @@ class Page:
                 "fontFamily": "sans-serif",
                 "padding": "32px",
                 "maxWidth": f"{self._max_width}px",
+                "backgroundColor": "#ffffff",
+                "color": "#1a1a1a",
             },
         )
         return app
 
+    def _ipython_display_(self, **_: Any) -> None:
+        """Auto-display the app when the page is the last expression in a cell."""
+        self.run()
+
     def run(self, *, name: str | None = None, **kwargs: Any) -> None:
         """Build the app and start the Dash development server.
+
+        When called inside a Jupyter notebook, ``jupyter_mode`` defaults to
+        ``"inline"`` so the app renders as an iframe in the cell output.
+        Pass ``jupyter_mode="external"`` or ``jupyter_mode="tab"`` to
+        override.  Outside Jupyter, ``jupyter_mode`` is ignored.
 
         Parameters
         ----------
         name :
             Forwarded to :meth:`build_app`.
         **kwargs :
-            Forwarded to ``app.run()`` (e.g. ``debug=True``, ``port=8050``).
+            Forwarded to ``app.run()`` (e.g. ``debug=True``, ``port=8050``,
+            ``jupyter_mode="external"``).
         """
         if name is None:
             name = _caller_name()
+        if _in_jupyter():
+            kwargs.setdefault("jupyter_mode", "inline")
         self.build_app(name=name).run(**kwargs)
