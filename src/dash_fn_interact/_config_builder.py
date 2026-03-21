@@ -343,7 +343,8 @@ class Config(html.Div):
         return result
 
     def invalid_outputs(self, errors: dict[str, str]) -> list:
-        """Convert an errors dict to a flat list of values for :attr:`validation_outputs`.
+        """Convert an errors dict to a flat list of values for
+        :attr:`validation_outputs`.
 
         Each validatable field contributes two values: the error message
         (or ``""`` when valid) and its CSS style dict.
@@ -565,6 +566,7 @@ def build_config(
     _include: list[str] | None = None,
     _initial_values: dict | object | None = None,
     _validator: Callable[[dict], str | None] | None = None,
+    _backend: Any = None,
     **kwargs: Field | FieldHook | tuple,
 ) -> Config:
     """Introspect *fn*'s signature and return a :class:`Config`.
@@ -662,6 +664,12 @@ def build_config(
         :meth:`form_invalid_output`.  It is also included in the ``errors``
         dict returned by :meth:`build_kwargs_validated` under the key
         ``"_form"``.
+    _backend :
+        The component library used to render the form controls.
+        Pass ``"dmc"``, ``"dbc"``, or ``"dcc"`` (explicit fallback), or a custom
+        :class:`~dash_fn_interact.backends.ComponentBackend` subclass instance.
+        Omitting it (or passing ``"auto"``) picks ``"dmc"`` when
+        ``dash-mantine-components`` is installed, otherwise ``"dcc"``.
 
     Returns
     -------
@@ -686,14 +694,14 @@ def build_config(
 
     # Normalize **kwargs shorthands and merge with _field_specs.
     # _field_specs wins over **kwargs for the same field name.
-    # _FieldFixed values are collected separately — not rendered, injected in build_kwargs.
+    # _FieldFixed values are collected separately — not rendered, injected in build_kwargs.  # noqa: E501
     fixed_values: dict[str, Any] = {}
     normalized: dict[str, Field | FieldHook] = {}
     for name, val in kwargs.items():
         if isinstance(val, _FieldFixed):
             fixed_values[name] = val.value
             continue
-        if isinstance(val, Field) or isinstance(val, FieldHook):
+        if isinstance(val, (Field, FieldHook)):
             normalized[name] = val
         elif isinstance(val, range):
             # range(start, stop, step) → Field(min, max, step)
@@ -752,6 +760,10 @@ def build_config(
 
     states = _build_states(config_id, fields)
 
+    from dash_fn_interact.backends import _resolve_backend
+
+    backend = _resolve_backend(_backend)
+
     label_style = styles.get("label")
     label_class_name = class_names.get("label", "")
 
@@ -772,7 +784,7 @@ def build_config(
 
     field_defaults = {f.name: f.default for f in fields}
     for f in fields:
-        child = _build_field(config_id, f, label_style, label_class_name)
+        child = _build_field(config_id, f, label_style, label_class_name, backend)
         if f.spec and f.spec.visible:
             other, op, val = f.spec.visible
             show = _check_visible(field_defaults.get(other), op, val)
@@ -999,6 +1011,7 @@ _RESERVED = frozenset(
         "_include",
         "_initial_values",
         "_validator",
+        "_backend",
     }
 )
 
@@ -1113,6 +1126,7 @@ def _build_field(
     f: _Field,
     label_style: dict | None,
     label_class_name: str,
+    backend: Any,
 ) -> html.Div:
     """Build a labeled input component for a single field."""
     spec = f.spec or Field()
@@ -1137,7 +1151,7 @@ def _build_field(
             )
         return html.Div(children, style=wrapper_style or None)
 
-    component = _make_component(config_id, f, spec, fid)
+    component = backend.make(config_id, f, spec, fid)
     children = [label, component]
     if spec.description:
         children.append(
@@ -1154,139 +1168,6 @@ def _build_field(
     return html.Div(children, style=wrapper_style or None)
 
 
-def _debounce(spec: Field) -> bool:
-    """Resolve effective debounce setting for a field (default: True)."""
-    return True if spec.debounce is None else spec.debounce
-
-
-def _make_component(config_id: str, f: _Field, spec: Field, fid: str) -> Any:
-    """Build the Dash input component for a field based on its type."""
-    if f.type == "bool":
-        return dcc.Checklist(
-            id=fid,
-            options=[{"label": "", "value": f.name}],
-            value=[f.name] if f.default else [],
-            style=spec.style,
-            className=spec.class_name,
-        )
-    if f.type == "date":
-        return dcc.DatePickerSingle(
-            id=fid,
-            date=f.default.isoformat() if isinstance(f.default, date) else None,
-            style=spec.style,
-            className=spec.class_name,
-        )
-    if f.type == "datetime":
-        default_date = (
-            f.default.date().isoformat() if isinstance(f.default, datetime) else None
-        )
-        default_time = (
-            f.default.strftime("%H:%M") if isinstance(f.default, datetime) else None
-        )
-        return html.Div(
-            style={"display": "flex", "gap": "8px", "alignItems": "center"},
-            children=[
-                dcc.DatePickerSingle(
-                    id=fid,
-                    date=default_date,
-                    style=spec.style,
-                    className=spec.class_name,
-                ),
-                dcc.Input(
-                    id=_time_field_id(config_id, f),
-                    type="text",
-                    placeholder="HH:MM",
-                    value=default_time,
-                    debounce=_debounce(spec),
-                    style={"width": "70px", **(spec.style or {})},
-                    className=spec.class_name,
-                ),
-            ],
-        )
-    if f.type in ("int", "float"):
-        step: Any = spec.step
-        if step is None:
-            step = 1 if f.type == "int" else "any"
-        return dcc.Input(
-            id=fid,
-            type="number",
-            step=step,
-            value=f.default,
-            min=spec.min,
-            max=spec.max,
-            debounce=_debounce(spec),
-            style=spec.style,
-            className=spec.class_name,
-        )
-    if f.type in ("list", "tuple"):
-        if f.type == "tuple":
-            placeholder = ", ".join(t.__name__ for t in f.args)
-        else:
-            elem = f.args[0].__name__ if f.args else "value"
-            placeholder = f"{elem}, ..."
-        return dcc.Input(
-            id=fid,
-            type="text",
-            value=", ".join(str(v) for v in f.default) if f.default else "",
-            placeholder=placeholder,
-            debounce=_debounce(spec),
-            style=spec.style,
-            className=spec.class_name,
-        )
-    if f.type == "literal":
-        return dcc.Dropdown(
-            id=fid,
-            options=list(f.args),
-            value=f.default if f.default in f.args else f.args[0],
-            style=spec.style,
-            className=spec.class_name,
-        )
-    if f.type == "enum":
-        enum_cls = f.args[0]
-        members = list(enum_cls)
-        default_name = (
-            f.default.name if isinstance(f.default, enum_cls) else members[0].name
-        )
-        return dcc.Dropdown(
-            id=fid,
-            options=[{"label": m.name, "value": m.name} for m in members],
-            value=default_name,
-            style=spec.style,
-            className=spec.class_name,
-        )
-    if f.type == "dict":
-        default_str = json.dumps(f.default, indent=2) if f.default else ""
-        return dcc.Textarea(
-            id=fid,
-            value=default_str,
-            placeholder='{"key": "value"}',
-            style={"fontFamily": "monospace", "width": "100%", **(spec.style or {})},
-            className=spec.class_name,
-        )
-    if f.type == "path":
-        return dcc.Input(
-            id=fid,
-            type="text",
-            value=str(f.default) if f.default is not None else "",
-            placeholder="/path/to/file",
-            debounce=_debounce(spec),
-            minLength=spec.min_length,
-            maxLength=spec.max_length,
-            style=spec.style,
-            className=spec.class_name,
-        )
-    # str (fallback)
-    return dcc.Input(
-        id=fid,
-        type="text",
-        value=str(f.default) if f.default is not None else "",
-        placeholder="",
-        debounce=_debounce(spec),
-        minLength=spec.min_length,
-        maxLength=spec.max_length,
-        style=spec.style,
-        className=spec.class_name,
-    )
 
 
 def _coerce(f: _Field, value: Any) -> Any:
