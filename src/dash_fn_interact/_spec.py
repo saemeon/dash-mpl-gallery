@@ -184,6 +184,18 @@ class Field:
     """Runtime hook that derives the field's default from Dash state."""
 
     # --- input behaviour ---
+    persist: bool = False
+    """Persist the field value across page reloads using the browser's session storage.
+
+    When ``True``, the generated component is rendered with
+    ``persistence=True, persistence_type="session"`` so the browser remembers
+    the last value even after a full page refresh.  Set to ``False`` (default)
+    to keep the component stateless (always loads with the default value).
+
+    Equivalent to wrapping every field manually in a ``dcc.Store`` —
+    useful for sliders or dropdowns whose position the user adjusts frequently.
+    """
+
     debounce: bool | None = None
     """Control debounce on ``dcc.Input`` / ``dcc.Textarea`` fields.
 

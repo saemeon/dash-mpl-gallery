@@ -70,6 +70,13 @@ def _debounce(spec: Field) -> bool:
     return True if spec.debounce is None else spec.debounce
 
 
+def _persist(spec: Field) -> dict:
+    """Return persistence kwargs when ``spec.persist`` is True, else empty dict."""
+    if not spec.persist:
+        return {}
+    return {"persistence": True, "persistence_type": "session"}
+
+
 def _resolve_field_maker(value: Any) -> FieldMaker:
     """Resolve a ``_field_components`` argument to a :class:`FieldMaker`.
 
@@ -123,6 +130,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             value=[f.name] if f.default else [],
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
     if f.type == "date":
         return dcc.DatePickerSingle(
@@ -130,6 +138,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             date=f.default.isoformat() if isinstance(f.default, date) else None,
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
     if f.type == "datetime":
         default_date = (
@@ -175,6 +184,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
                 value=f.default if f.default is not None else spec.min,
                 tooltip={"placement": "bottom", "always_visible": False},
                 className=spec.class_name,
+                **_persist(spec),
             )
             return html.Div(slider, style=spec.style) if spec.style else slider
         return dcc.Input(
@@ -187,6 +197,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             debounce=_debounce(spec),
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
     if f.type in ("list", "tuple"):
         lit_args = _list_literal_args(f)
@@ -199,6 +210,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
                 multi=True,
                 style=spec.style,
                 className=spec.class_name,
+                **_persist(spec),
             )
         if f.type == "tuple":
             placeholder = ", ".join(t.__name__ for t in f.args)
@@ -213,6 +225,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             debounce=_debounce(spec),
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
     if f.type == "literal":
         return dcc.Dropdown(
@@ -221,6 +234,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             value=f.default if f.default in f.args else f.args[0],
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
     if f.type == "enum":
         enum_cls = f.args[0]
@@ -234,6 +248,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             value=default_name,
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
     if f.type == "dict":
         default_str = json.dumps(f.default, indent=2) if f.default else ""
@@ -247,6 +262,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
                 **(spec.style or {}),
             },
             className=spec.class_name,
+            **_persist(spec),
         )
     if f.type == "path":
         return dcc.Input(
@@ -259,6 +275,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             maxLength=spec.max_length,
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
     # str (fallback)
     return dcc.Input(
@@ -271,6 +288,7 @@ def make_dcc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
         maxLength=spec.max_length,
         style=spec.style,
         className=spec.class_name,
+        **_persist(spec),
     )
 
 
@@ -379,6 +397,7 @@ def make_dmc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
         )
 
     # str, path, list, tuple
+    # dmc.TextInput does not expose Dash's persistence prop — no _persist() here
     return dmc.TextInput(
         id=fid,
         value=str(f.default) if f.default is not None else "",
@@ -421,6 +440,7 @@ def make_dbc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             value=[f.name] if f.default else [],
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
 
     if f.type in ("int", "float"):
@@ -437,6 +457,7 @@ def make_dbc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
                 value=f.default if f.default is not None else spec.min,
                 tooltip={"placement": "bottom", "always_visible": False},
                 className=spec.class_name,
+                **_persist(spec),
             )
             return html.Div(slider, style=spec.style) if spec.style else slider
         return dbc.Input(
@@ -449,6 +470,7 @@ def make_dbc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             debounce=_debounce(spec),
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
 
     if f.type == "literal":
@@ -459,6 +481,7 @@ def make_dbc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             value=f.default if f.default in f.args else f.args[0],
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
 
     if f.type == "enum":
@@ -473,6 +496,7 @@ def make_dbc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             value=default_name,
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
 
     if f.type == "dict":
@@ -487,6 +511,7 @@ def make_dbc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
                 **(spec.style or {}),
             },
             className=spec.class_name,
+            **_persist(spec),
         )
 
     if f.type in ("list", "tuple"):
@@ -501,6 +526,7 @@ def make_dbc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
                 multi=True,
                 style=spec.style,
                 className=spec.class_name,
+                **_persist(spec),
             )
         if f.type == "tuple":
             placeholder = ", ".join(t.__name__ for t in f.args)
@@ -515,6 +541,7 @@ def make_dbc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
             debounce=_debounce(spec),
             style=spec.style,
             className=spec.class_name,
+            **_persist(spec),
         )
 
     # str, path
@@ -526,4 +553,5 @@ def make_dbc_field(config_id: str, f: Any, spec: Field, fid: str) -> Any:
         debounce=_debounce(spec),
         style=spec.style,
         className=spec.class_name,
+        **_persist(spec),
     )
