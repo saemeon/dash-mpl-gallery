@@ -106,6 +106,19 @@ class Field:
     and is treated as ``Field(hook=hook)``.
     """
 
+    # --- default value ---
+    default: Any = None
+    """Default value for the field.
+
+    Used in :class:`~dash_fn_interact.Form` declarative subclasses::
+
+        class MyForm(Form):
+            dpi: int = Field(min=72, max=300, default=150)
+
+    Ignored when the field is defined via a typed callable (the callable's
+    parameter default takes precedence).
+    """
+
     # --- label / help ---
     label: str | None = None
     """Override the auto-generated label (default: param name in title case)."""

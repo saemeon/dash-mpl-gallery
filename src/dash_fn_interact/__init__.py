@@ -3,7 +3,7 @@
 
 """dash-fn-interact — introspect a typed callable into a Dash form."""
 
-from dash_fn_interact._config_builder import FieldRef, FnForm, field_id
+from dash_fn_interact._config_builder import FieldRef, FnForm, Form, field_id
 from dash_fn_interact._field_components import (
     FieldMaker,
     make_dbc_field,
@@ -15,6 +15,7 @@ from dash_fn_interact._spec import Field, FieldHook, FromComponent, fixed
 
 __all__ = [
     "FnForm",
+    "Form",
     "Field",
     "FieldHook",
     "FieldMaker",
