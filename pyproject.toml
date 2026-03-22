@@ -3,6 +3,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 dash-fn-interact = { workspace = true }
+s5ndt = { workspace = true }
 
 [dependency-groups]
 test = ["pytest", "pytest-cov"]

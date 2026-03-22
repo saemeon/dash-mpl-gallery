@@ -26,5 +26,6 @@
     "yaml.customTags": [
         "!reference sequence"
     ],
-    "python.languageServer": "None"
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "python.languageServer": "Pylance"
 }

@@ -1,8 +1,8 @@
 [project]
-name = "dash-interact"
+name = "dash-capture"
 dynamic = ["version"]
-description = "pyplot-style convenience layer for Plotly Dash — build interactive apps top-to-bottom with no boilerplate."
-keywords = ["plotly", "dash", "visualization", "dashboard", "interact"]
+description = "Browser capture & custom renderer pipeline for Plotly Dash components"
+keywords = ["plotly", "dash", "capture", "export", "screenshot", "visualization"]
 classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -22,6 +22,9 @@ maintainers = [
 requires-python = ">=3.10"
 dependencies = [
     "dash-fn-interact",
+    "dash>=4.0.0",
+    "matplotlib>=3.10.8",
+    "plotly>=6.6.0",
 ]
 
 [project.urls]
@@ -34,15 +37,15 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 root = "../.."
-write_to = "packages/dash-interact/src/dash_interact/_version.py"
+write_to = "packages/dash-capture/src/dash_capture/_version.py"
 version_scheme = "post-release"
 local_scheme = "no-local-version"
 
 [tool.setuptools.dynamic]
-version = { attr = "dash_interact._version.__version__" }
+version = { attr = "dash_capture._version.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-dash_interact = ["py.typed"]
+dash_capture = ["py.typed"]

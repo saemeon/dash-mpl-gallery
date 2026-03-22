@@ -1,6 +1,6 @@
 [project]
 name = "dash-fn-interact"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Introspection-based UI engine for Plotly Dash — transform type-hinted Python functions into reactive Dash forms."
 keywords = ["plotly", "dash", "visualization", "dashboard"]
 classifiers = [
@@ -31,14 +31,17 @@ Homepage = "https://github.com/saemeon/dash-interact"
 Repository = "https://github.com/saemeon/dash-interact"
 
 [build-system]
-requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
+requires = ["setuptools>=61.0", "wheel", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 root = "../.."
-write_to = "src/dash_fn_interact/_version.py"
+write_to = "packages/dash-fn-interact/src/dash_fn_interact/_version.py"
 version_scheme = "post-release"
 local_scheme = "no-local-version"
+
+[tool.setuptools.dynamic]
+version = { attr = "dash_fn_interact._version.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
