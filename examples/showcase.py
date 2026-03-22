@@ -24,8 +24,7 @@ from enum import Enum
 from typing import Annotated, Literal
 
 from dash import Dash, Input, Output, dcc, html
-
-from dash_fn_interact import Field, FnForm, FromComponent
+from dash_interact import Field, FnForm, FromComponent
 
 app = Dash(__name__, suppress_callback_exceptions=True)
 
@@ -45,7 +44,7 @@ def _to_json(kwargs: dict) -> str:
     for k, v in kwargs.items():
         if isinstance(v, Enum):
             out[k] = f"{type(v).__name__}.{v.name}  (value={v.value!r})"
-        elif isinstance(v, datetime) or isinstance(v, date):
+        elif isinstance(v, (datetime, date)):
             out[k] = v.isoformat()
         elif isinstance(v, pathlib.Path):
             out[k] = str(v)
@@ -219,14 +218,14 @@ cfg2 = FnForm(
 )
 
 
-# @app.callback(
-#     Output("out2", "children"),
-#     Input("btn2", "n_clicks"),
-#     *cfg2.states,
-#     prevent_initial_call=True,
-# )
-# def apply2(_n, *values):
-#     return _to_json(cfg2.build_kwargs(values))
+@app.callback(
+    Output("out2", "children"),
+    Input("btn2", "n_clicks"),
+    *cfg2.states,
+    prevent_initial_call=True,
+)
+def apply2(_n, *values):
+    return _to_json(cfg2.build_kwargs(values))
 
 
 # ── Section 3: Field ──────────────────────────────────────────────────────
@@ -690,19 +689,6 @@ app.layout = html.Div(
                 ),
             ),
         ),
-        # ── 7: validation ───────────────────────────────────────────────────
-        _section(
-            "7 — Validation  (build_kwargs_validated · validation_outputs · invalid_outputs)",
-            html.P(
-                "username and age are required. Try leaving them empty or entering"
-                " text in a number field, then click Apply.",
-                style={"color": "#555", "marginBottom": "16px"},
-            ),
-            _row(
-                _form_panel(cfg7, _apply_btn("btn7")),
-                _output_panel("out7"),
-            ),
-        ),
         # ── 6: visibility rules ─────────────────────────────────────────────
         _section(
             "6 — Visibility rules  (Field(visible=...) · register_visibility_callbacks)",
@@ -717,6 +703,19 @@ app.layout = html.Div(
                     _apply_btn("btn6"),
                 ),
                 _output_panel("out6"),
+            ),
+        ),
+        # ── 7: validation ───────────────────────────────────────────────────
+        _section(
+            "7 — Validation  (build_kwargs_validated · validation_outputs · invalid_outputs)",
+            html.P(
+                "username and age are required. Try leaving them empty or entering"
+                " text in a number field, then click Apply.",
+                style={"color": "#555", "marginBottom": "16px"},
+            ),
+            _row(
+                _form_panel(cfg7, _apply_btn("btn7")),
+                _output_panel("out7"),
             ),
         ),
     ],

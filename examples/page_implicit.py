@@ -1,11 +1,18 @@
 """Page (implicit) example.
 
-Demonstrates the implicit convenience layer in ``dash_fn_interact.page``:
-import ``interact``, ``add``, and ``run`` at module level and call them
-top-to-bottom — no Page object, no app.layout, no Dash() instantiation.
+Demonstrates the implicit convenience layer — import ``page`` and call
+everything through it, just like ``matplotlib.pyplot``.
 
-This is as close to the Streamlit / Shiny Express authoring experience as
-Dash allows while still using its full callback machinery under the hood.
+    from dash_interact import page
+
+    page.H1("My App")
+
+    @page.interact
+    def sine_wave(amplitude: float = 1.0): ...
+
+    page.run()
+
+No Page object, no app.layout, no Dash() instantiation.
 
 Run:
     uv run python examples/page_implicit.py
@@ -16,27 +23,23 @@ from typing import Literal
 
 import numpy as np
 import plotly.graph_objects as go
-from dash import html
-
-from dash_fn_interact.page import add, interact, run
+from dash_interact import page
 
 # ── header ────────────────────────────────────────────────────────────────────
 
-add(
-    html.H1("Page — implicit", style={"marginBottom": "4px"}),
-    html.P(
-        "Same two panels as page_explicit.py — written top-to-bottom with no "
-        "Page object and no app.layout.",
-        style={"color": "#666", "marginBottom": "32px"},
-    ),
+page.H1("Page — implicit", style={"marginBottom": "4px"})
+page.P(
+    "Same two panels as page_explicit.py — written top-to-bottom with no "
+    "Page object and no app.layout.",
+    style={"color": "#666", "marginBottom": "32px"},
 )
 
 # ── panel 1: sine wave ────────────────────────────────────────────────────────
 
-add(html.H2("Sine wave", style={"marginBottom": "16px"}))
+page.H2("Sine wave", style={"marginBottom": "16px"})
 
 
-@interact(amplitude=(0.1, 3.0, 0.1), frequency=(0.5, 8.0, 0.5))
+@page.interact(amplitude=(0.1, 3.0, 0.1), frequency=(0.5, 8.0, 0.5))
 def sine_wave(
     amplitude: float = 1.0,
     frequency: float = 2.0,
@@ -73,15 +76,13 @@ def sine_wave(
 
 # ── divider ───────────────────────────────────────────────────────────────────
 
-add(
-    html.Hr(style={"margin": "32px 0", "borderColor": "#e0e0e0"}),
-    html.H2("Histogram", style={"marginBottom": "16px"}),
-)
+page.Hr(style={"margin": "32px 0", "borderColor": "#e0e0e0"})
+page.H2("Histogram", style={"marginBottom": "16px"})
 
 # ── panel 2: histogram ────────────────────────────────────────────────────────
 
 
-@interact(n_samples=(50, 2000, 50), bins=(5, 100, 5))
+@page.interact(n_samples=(50, 2000, 50), bins=(5, 100, 5))
 def random_histogram(
     n_samples: int = 500,
     mean: float = 0.0,
@@ -106,4 +107,4 @@ def random_histogram(
 # ── launch ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    run(debug=True, port=8061)
+    page.run(debug=True, port=8061)
