@@ -29,9 +29,23 @@ class FnPanel(html.Div):
         ])
     """
 
-    def __init__(self, children: list[Any], *, form: FnForm, output: html.Div) -> None:
+    def __init__(
+        self,
+        children: list[Any],
+        *,
+        form: FnForm,
+        output: html.Div,
+        fn: Callable,
+        cfg: FnForm,
+        call: Callable[..., Any] | None,
+        render: Callable[[Any], Any] | None,
+    ) -> None:
         self._form = form
         self._output = output
+        self._fn = fn
+        self._cfg = cfg
+        self._call = call
+        self._render = render
         super().__init__(children)
 
     @property
@@ -43,6 +57,30 @@ class FnPanel(html.Div):
     def output(self) -> html.Div:
         """The output area sub-component (unwrapped from ``dcc.Loading``)."""
         return self._output
+
+    def compute(self, *values: Any) -> Any:
+        """Run the wrapped function with *values* from the form fields.
+
+        Returns the ``to_component``-rendered result, or an error ``html.Pre``
+        if the function raises.  This is the same logic as the Dash callback —
+        calling it directly enables unit testing without a running Dash app::
+
+            panel = build_fn_panel(fn, _id="test")
+            result = panel.compute(3.14, 2)
+            assert isinstance(result, html.P)
+        """
+        try:
+            result = (
+                self._call(*values)
+                if self._call is not None
+                else self._fn(**self._cfg.build_kwargs(values))
+            )
+        except Exception as exc:
+            return html.Pre(
+                f"Error: {exc}",
+                style={"color": "#d9534f", "fontFamily": "monospace"},
+            )
+        return to_component(result, self._render)
 
 
 def _make_hashable(v: Any) -> Any:
@@ -117,26 +155,19 @@ def build_fn_panel(
     _inner = html.Div(id=output_id, style={"marginTop": "16px"})
     output_div = dcc.Loading(_inner, type="circle") if _loading else _inner
 
+    _panel_kwargs: dict[str, Any] = {
+        "form": cfg,
+        "output": _inner,
+        "fn": fn,
+        "cfg": cfg,
+        "call": _call,
+        "render": _render,
+    }
+
     if _manual:
         btn_id = f"_dft_interact_btn_{config_id}"
 
-        @callback(
-            Output(output_id, "children"),
-            Input(btn_id, "n_clicks"),
-            *cfg.states,
-            prevent_initial_call=True,
-        )
-        def _on_apply(_n: int, *values: Any) -> Any:
-            try:
-                result = _call(*values) if _call is not None else fn(**cfg.build_kwargs(values))
-            except Exception as exc:
-                return html.Pre(
-                    f"Error: {exc}",
-                    style={"color": "#d9534f", "fontFamily": "monospace"},
-                )
-            return to_component(result, _render)
-
-        return FnPanel(
+        panel = FnPanel(
             [
                 cfg,
                 html.Button(
@@ -151,23 +182,28 @@ def build_fn_panel(
                 ),
                 output_div,
             ],
-            form=cfg,
-            output=_inner,
+            **_panel_kwargs,
         )
+
+        @callback(
+            Output(output_id, "children"),
+            Input(btn_id, "n_clicks"),
+            *cfg.states,
+            prevent_initial_call=True,
+        )
+        def _on_apply(_n: int, *values: Any) -> Any:
+            return panel.compute(*values)
+
+        return panel
 
     else:
         cfg_states: list[State] = object.__getattribute__(cfg, "states")
         inputs = [Input(s.component_id, s.component_property) for s in cfg_states]
 
+        panel = FnPanel([cfg, output_div], **_panel_kwargs)
+
         @callback(Output(output_id, "children"), *inputs)
         def _on_change(*values: Any) -> Any:
-            try:
-                result = _call(*values) if _call is not None else fn(**cfg.build_kwargs(values))
-            except Exception as exc:
-                return html.Pre(
-                    f"Error: {exc}",
-                    style={"color": "#d9534f", "fontFamily": "monospace"},
-                )
-            return to_component(result, _render)
+            return panel.compute(*values)
 
-        return FnPanel([cfg, output_div], form=cfg, output=_inner)
+        return panel

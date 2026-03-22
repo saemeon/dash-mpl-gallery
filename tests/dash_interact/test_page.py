@@ -124,3 +124,109 @@ def test_page_module_h1_shorthand():
     comp = page.H1("title")
     assert isinstance(comp, html.H1)
     assert comp in page.current().children
+
+
+# ── Page serialization ────────────────────────────────────────────────────────
+
+
+def test_page_to_plotly_json_returns_dict():
+    p = _fresh_page()
+    p.H1("Test")
+    result = p.to_plotly_json()
+    assert isinstance(result, dict)
+
+
+def test_page_to_plotly_json_no_field_ref_leakage():
+    """FieldRef objects must not appear in serialized layout."""
+    from dash_fn_interact import FnForm
+
+    p = _fresh_page()
+
+    def fn(x: float = 1.0):
+        pass
+
+    form = FnForm("_t_serial", fn)
+    p.add(form)
+    result = str(p.to_plotly_json())
+    assert "FieldRef" not in result
+
+
+def test_page_unknown_attr_during_serialization_raises():
+    """__getattr__ with _in_serialization=True must raise AttributeError."""
+    import pytest
+
+    p = _fresh_page()
+    object.__setattr__(p, "_in_serialization", True)
+    with pytest.raises(AttributeError):
+        _ = p.SomeAttr
+    object.__setattr__(p, "_in_serialization", False)
+
+
+# ── Page options ──────────────────────────────────────────────────────────────
+
+
+def test_page_max_width_in_style():
+    p = _fresh_page(max_width=1200)
+    assert "1200px" in str(p.style)
+
+
+def test_page_manual_default_false():
+    p = _fresh_page()
+    assert p._manual is False
+
+
+def test_page_manual_true_propagates_to_interact():
+    """Page(manual=True) makes interact panels use manual mode by default."""
+    from dash_fn_interact.fn_interact import FnPanel
+
+    p = _fresh_page(manual=True)
+
+    def fn(x: float = 1.0):
+        pass
+
+    panel = p.interact(fn, _id="_t_manual_prop")
+    assert isinstance(panel, FnPanel)
+    # The panel should contain a button (manual mode)
+    json_str = str(panel.to_plotly_json())
+    assert "Button" in json_str
+
+
+def test_page_interact_explicit_manual_overrides_page_default():
+    """_manual kwarg overrides Page.manual."""
+
+    p = _fresh_page(manual=True)
+
+    def fn(x: float = 1.0):
+        pass
+
+    panel = p.interact(fn, _id="_t_manual_override", _manual=False)
+    json_str = str(panel.to_plotly_json())
+    assert "Button" not in json_str
+
+
+def test_page_build_app_with_name():
+    p = _fresh_page()
+    app = p.build_app(name="MyTestApp")
+    assert isinstance(app, Dash)
+
+
+# ── _PageManager ─────────────────────────────────────────────────────────────
+
+
+def test_page_manager_is_active_false_initially():
+    _PageManager._page = None
+    assert not _PageManager.is_active()
+
+
+def test_page_manager_is_active_after_page_creation():
+    _fresh_page()
+    assert _PageManager.is_active()
+
+
+def test_page_manager_activate_switches_page():
+    p1 = _fresh_page()
+    p2 = Page()
+    _PageManager.activate(p1)
+    assert _PageManager.current() is p1
+    _PageManager.activate(p2)
+    assert _PageManager.current() is p2

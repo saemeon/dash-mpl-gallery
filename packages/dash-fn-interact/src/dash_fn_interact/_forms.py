@@ -628,6 +628,89 @@ class Form(html.Div):
             },
         ]
 
+    @staticmethod
+    def _apply_populate(
+        fields: list[_Field],
+        hook_states: list[State],
+        current_values: list[Any],
+        hook_state_values: tuple | list,
+    ) -> list[Any]:
+        """Pure logic for populating hooked fields on open.
+
+        Separated from the Dash callback so it can be tested directly::
+
+            results = Form._apply_populate(fields, hook_states, current_values, hook_state_values)
+        """
+        state_map = {
+            (s.component_id, s.component_property): v
+            for s, v in zip(hook_states, hook_state_values, strict=False)
+        }
+        results: list[Any] = []
+        cur = iter(current_values)
+        for f in fields:
+            assert f.spec is not None and f.spec.hook is not None
+            hook: FieldHook = f.spec.hook
+            resolved = [
+                state_map[(s.component_id, s.component_property)]
+                for s in hook.required_states()
+            ]
+            if f.type == "datetime":
+                cur_date, cur_time = next(cur), next(cur)
+                if cur_date not in (None, "") or cur_time not in (None, ""):
+                    results += [dash.no_update, dash.no_update]
+                    continue
+                widget_val = _to_widget_value(f, hook.get_default(*resolved))
+                if widget_val == (None, None):
+                    results += [dash.no_update, dash.no_update]
+                else:
+                    results += list(widget_val)
+            elif f.type == "date":
+                if next(cur) not in (None, ""):
+                    results.append(dash.no_update)
+                    continue
+                widget_val = _to_widget_value(f, hook.get_default(*resolved))
+                results.append(widget_val if widget_val is not None else dash.no_update)
+            else:
+                if next(cur) not in (None, ""):
+                    results.append(dash.no_update)
+                    continue
+                results.append(_to_widget_value(f, hook.get_default(*resolved)))
+        return results
+
+    @staticmethod
+    def _apply_restore(
+        fields: list[_Field],
+        hook_states: list[State],
+        hook_state_values: tuple | list,
+    ) -> list[Any]:
+        """Pure logic for resetting all fields to their defaults.
+
+        Separated from the Dash callback so it can be tested directly::
+
+            results = Form._apply_restore(fields, hook_states, hook_state_values)
+        """
+        state_map = {
+            (s.component_id, s.component_property): v
+            for s, v in zip(hook_states, hook_state_values, strict=False)
+        }
+        results: list[Any] = []
+        for f in fields:
+            hook = f.spec.hook if f.spec else None
+            if hook:
+                resolved = [
+                    state_map[(s.component_id, s.component_property)]
+                    for s in hook.required_states()
+                ]
+                val = hook.get_default(*resolved)
+            else:
+                val = f.default
+            widget_val = _to_widget_value(f, val)
+            if f.type == "datetime":
+                results.extend(widget_val)
+            else:
+                results.append(widget_val)
+        return results
+
     def register_populate_callback(self, open_input: Input) -> None:
         """Register a single callback that populates all hooked fields on open.
 
@@ -680,45 +763,9 @@ class Form(html.Div):
             n_current = len(current_states)
             current_values = list(all_state_values[:n_current])
             hook_state_values = all_state_values[n_current:]
-
-            state_map = {
-                (s.component_id, s.component_property): v
-                for s, v in zip(hook_states, hook_state_values, strict=False)
-            }
-
-            results: list[Any] = []
-            cur = iter(current_values)
-            for f in fields:
-                assert f.spec is not None and f.spec.hook is not None
-                hook: FieldHook = f.spec.hook
-                resolved = [
-                    state_map[(s.component_id, s.component_property)]
-                    for s in hook.required_states()
-                ]
-                if f.type == "datetime":
-                    cur_date, cur_time = next(cur), next(cur)
-                    if cur_date not in (None, "") or cur_time not in (None, ""):
-                        results += [dash.no_update, dash.no_update]
-                        continue
-                    widget_val = _to_widget_value(f, hook.get_default(*resolved))
-                    if widget_val == (None, None):
-                        results += [dash.no_update, dash.no_update]
-                    else:
-                        results += list(widget_val)
-                elif f.type == "date":
-                    if next(cur) not in (None, ""):
-                        results.append(dash.no_update)
-                        continue
-                    widget_val = _to_widget_value(f, hook.get_default(*resolved))
-                    results.append(
-                        widget_val if widget_val is not None else dash.no_update
-                    )
-                else:
-                    if next(cur) not in (None, ""):
-                        results.append(dash.no_update)
-                        continue
-                    results.append(_to_widget_value(f, hook.get_default(*resolved)))
-            return results
+            return Form._apply_populate(
+                fields, hook_states, current_values, hook_state_values
+            )
 
     def register_restore_callback(self, restore_input: Input) -> None:
         """Register a callback that resets all fields to their defaults.
@@ -759,27 +806,7 @@ class Form(html.Div):
 
         @dash.callback(*outputs, restore_input, *hook_states, prevent_initial_call=True)
         def restore_all(n_clicks, *hook_state_values):
-            state_map = {
-                (s.component_id, s.component_property): v
-                for s, v in zip(hook_states, hook_state_values, strict=False)
-            }
-            results: list[Any] = []
-            for f in fields:
-                hook = f.spec.hook if f.spec else None
-                if hook:
-                    resolved = [
-                        state_map[(s.component_id, s.component_property)]
-                        for s in hook.required_states()
-                    ]
-                    val = hook.get_default(*resolved)
-                else:
-                    val = f.default
-                widget_val = _to_widget_value(f, val)
-                if f.type == "datetime":
-                    results.extend(widget_val)
-                else:
-                    results.append(widget_val)
-            return results
+            return Form._apply_restore(fields, hook_states, hook_state_values)
 
     @classmethod
     def _collect_fields(cls, styles: dict, class_names: dict) -> list[_Field]:

@@ -218,3 +218,127 @@ def test_build_fn_panel_cache_true():
 
     panel = _panel(fn, _cache=True)
     assert isinstance(panel, FnPanel)
+
+
+# ── _make_hashable ────────────────────────────────────────────────────────────
+
+
+def test_make_hashable_scalar_passthrough():
+    from dash_fn_interact.fn_interact import _make_hashable
+
+    assert _make_hashable(42) == 42
+    assert _make_hashable("hello") == "hello"
+    assert _make_hashable(None) is None
+    assert _make_hashable(3.14) == 3.14
+
+
+def test_make_hashable_list_becomes_tuple():
+    from dash_fn_interact.fn_interact import _make_hashable
+
+    result = _make_hashable([1, 2, 3])
+    assert result == (1, 2, 3)
+    assert isinstance(result, tuple)
+
+
+def test_make_hashable_nested_list():
+    from dash_fn_interact.fn_interact import _make_hashable
+
+    result = _make_hashable([["a", "b"], "c"])
+    assert result == (("a", "b"), "c")
+
+
+def test_make_hashable_empty_list():
+    from dash_fn_interact.fn_interact import _make_hashable
+
+    assert _make_hashable([]) == ()
+
+
+# ── FnPanel.compute ───────────────────────────────────────────────────────────
+
+
+def test_compute_returns_rendered_result():
+    def fn(x: float = 1.0):
+        return x * 2
+
+    panel = _panel(fn)
+    result = panel.compute(3.0)
+    # 6.0 → html.P
+    assert isinstance(result, html.P)
+
+
+def test_compute_renders_string_as_markdown():
+    def fn(name: str = "world"):
+        return f"Hello **{name}**"
+
+    from dash import dcc as _dcc
+
+    panel = _panel(fn)
+    result = panel.compute("Alice")
+    assert isinstance(result, _dcc.Markdown)
+
+
+def test_compute_exception_returns_error_pre():
+    def fn(x: float = 1.0):
+        raise ValueError("bad input")
+
+    panel = _panel(fn)
+    result = panel.compute(1.0)
+    assert isinstance(result, html.Pre)
+    assert "bad input" in str(result.children)
+
+
+def test_compute_with_cache():
+    call_count = [0]
+
+    def fn(x: float = 1.0):
+        call_count[0] += 1
+        return x
+
+    panel = _panel(fn, _cache=True)
+    panel.compute(5.0)
+    panel.compute(5.0)  # cached
+    assert call_count[0] == 1
+
+
+def test_compute_custom_renderer():
+    from dash import html as _html
+
+    def fn(x: float = 1.0):
+        return x
+
+    panel = build_fn_panel(fn, _id=f"_t_render_{id(fn)}", _render=lambda v: _html.H2(str(v)))
+    result = panel.compute(42.0)
+    assert isinstance(result, _html.H2)
+
+
+# ── _cached_caller TypeError fallback ─────────────────────────────────────────
+
+
+def test_cached_caller_unhashable_falls_back_to_direct_call():
+    """Values that can't be hashed (e.g. dicts) fall back to direct fn call."""
+    call_count = [0]
+
+    def fn(x: float = 1.0):
+        call_count[0] += 1
+        return x
+
+    uid = f"_t_cache_fallback_{id(fn)}"
+    cfg = FnForm(uid, fn)
+    caller = _cached_caller(fn, cfg, maxsize=128)
+
+    # Patch _make_hashable to raise TypeError to simulate unhashable
+    import dash_fn_interact.fn_interact as _fi
+    original = _fi._make_hashable
+
+    def _raise(_):
+        raise TypeError("not hashable")
+
+    _fi._make_hashable = _raise
+    try:
+        caller(1.0)
+        caller(1.0)
+    finally:
+        _fi._make_hashable = original
+
+    # Both calls went through (no caching due to TypeError fallback)
+    assert call_count[0] == 2

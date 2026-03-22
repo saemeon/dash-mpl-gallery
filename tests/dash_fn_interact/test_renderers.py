@@ -161,3 +161,51 @@ def test_dict_values_can_be_mixed_types():
     result = to_component({"n": 42, "text": "hi", "flag": True}, None)
     assert isinstance(result, html.Div)
     assert len(result.children) == 3
+
+
+# ── dict scalar vs rich branching ────────────────────────────────────────────
+
+
+def test_dict_scalar_value_rendered_inline():
+    """str/int/float/bool values → html.P or dcc.Markdown, rendered inline."""
+    result = to_component({"score": 42}, None)
+    # The int should become html.P inside the card
+    json_str = str(result.to_plotly_json())
+    assert "42" in json_str
+
+
+def test_dict_figure_value_rendered_as_graph():
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    result = to_component({"chart": fig}, None)
+    json_str = str(result.to_plotly_json())
+    assert "Graph" in json_str
+
+
+# ── _error helper ────────────────────────────────────────────────────────────
+
+
+def test_error_returns_pre():
+    from dash_fn_interact._renderers import _error
+
+    result = _error("something went wrong")
+    assert isinstance(result, html.Pre)
+    assert "something went wrong" in str(result.children)
+    assert result.style["color"] == "#d9534f"
+
+
+def test_explicit_renderer_error_is_pre():
+    """Renderer exception produces an error Pre, not a crash."""
+    result = to_component("data", lambda _: 1 / 0)
+    assert isinstance(result, html.Pre)
+
+
+# ── None passthrough ──────────────────────────────────────────────────────────
+
+
+def test_dict_with_none_value():
+    """None values inside a dict are handled (to_component(None) → None)."""
+    result = to_component({"empty": None}, None)
+    assert isinstance(result, html.Div)
+    assert len(result.children) == 1

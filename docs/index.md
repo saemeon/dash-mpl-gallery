@@ -75,6 +75,34 @@ app.run()
 
 `Page` is a subclass of `html.Div` — use it anywhere a Dash component is accepted.
 
+## The interact family
+
+Three levels mirroring ipywidgets:
+
+```python
+from dash_interact import interact, interactive, interactive_output
+from dash_fn_interact import FnForm
+
+# 1. Fire and forget — attaches to the current page
+@interact
+def plot(amplitude: float = 1.0): ...
+
+# 2. Embeddable — place it yourself, split via .form / .output
+panel = interactive(plot, amplitude=(0, 2, 0.1))
+app.layout = html.Div([
+    html.Div([panel.form], className="sidebar"),
+    html.Div([panel.output], className="main"),
+])
+
+# 3. Fully decoupled — pre-built form, separate output area
+form = FnForm("plot", plot)
+output = interactive_output(plot, form)
+app.layout = html.Div([
+    html.Div([form], className="sidebar"),
+    html.Div([output], className="main"),
+])
+```
+
 ## Field customization
 
 ```python
@@ -98,6 +126,30 @@ def my_fn(amplitude: float = 1.0, label: str = "Chart"):
 | `col_span` | Column span in a multi-column grid |
 | `component` | Replace the auto-generated Dash component entirely |
 | `hook` | `FieldHook` for runtime-populated defaults |
+
+## Panel options
+
+| Option | Default | Description |
+|---|---|---|
+| `_manual` | `False` | Show an *Apply* button; callback fires on click only |
+| `_loading` | `True` | Wrap the output area in `dcc.Loading` |
+| `_cache` | `False` | Cache results by field values (LRU) |
+| `_cache_maxsize` | `128` | Maximum cached entries |
+| `_render` | `None` | Custom renderer for the return value |
+| `_id` | fn name | Component ID namespace (set when two panels share a function name) |
+
+## Result caching
+
+Pass `_cache=True` to skip re-calling the function when the same field values are submitted again:
+
+```python
+@interact(_cache=True)
+def expensive(n: int = 100):
+    import time; time.sleep(2)
+    return n * n
+```
+
+Uses LRU eviction with `_cache_maxsize=128` (default). Each unique combination of field values counts as one cache entry.
 
 ## Custom renderers
 
@@ -123,13 +175,41 @@ Built-in renderers (checked in order):
 2. Global registry (`register_renderer`)
 3. `plotly.graph_objects.Figure` → `dcc.Graph`
 4. Dash component → as-is
-5. `str` → `dcc.Markdown`
-6. `int` / `float` / `bool` → `html.P`
-7. `pandas.DataFrame` → `DataTable`
-8. `matplotlib.figure.Figure` → base64 PNG image
-9. Fallback → `html.Pre(repr(result))`
+5. `dict` → labelled card grid
+6. `str` → `dcc.Markdown`
+7. `int` / `float` / `bool` → `html.P`
+8. `pandas.DataFrame` → `DataTable`
+9. `matplotlib.figure.Figure` → base64 PNG image
+10. Fallback → `html.Pre(repr(result))`
+
+## Dict return
+
+When a function returns a `dict`, each value is rendered as a labelled card:
+
+```python
+@interact
+def stats(n: int = 100):
+    import numpy as np
+    data = np.random.randn(n)
+    return {
+        "mean": f"{data.mean():.4f}",
+        "std": f"{data.std():.4f}",
+        "min": f"{data.min():.4f}",
+        "max": f"{data.max():.4f}",
+    }
+```
+
+Each value is passed through the normal renderer pipeline — keys can map to strings, numbers, figures, DataFrames, or any registered type.
 
 ## API Reference
+
+### interact family
+
+::: dash_interact.interact.interact
+
+::: dash_interact.interact.interactive
+
+::: dash_interact.interact.interactive_output
 
 ### page
 

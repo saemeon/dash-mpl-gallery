@@ -112,3 +112,31 @@ def test_interactive_output_with_loading_returns_loading():
     form = FnForm("_t_io_loading", fn)
     out = interactive_output(fn, form, _loading=True)
     assert isinstance(out, dcc.Loading)
+
+
+# ── caching params ────────────────────────────────────────────────────────────
+
+
+def test_interactive_cache_true_builds():
+    def fn(x: float = 1.0):
+        pass
+
+    panel = interactive(fn, _id="_t_interactive_cache", _cache=True)
+    assert isinstance(panel, FnPanel)
+
+
+def test_interactive_cache_maxsize_builds():
+    def fn(x: float = 1.0):
+        pass
+
+    panel = interactive(fn, _id="_t_interactive_maxsize", _cache=True, _cache_maxsize=32)
+    assert isinstance(panel, FnPanel)
+
+
+def test_interactive_output_cache_true_builds():
+    def fn(x: float = 1.0):
+        pass
+
+    form = FnForm("_t_io_cache", fn)
+    out = interactive_output(fn, form, _loading=False, _cache=True)
+    assert isinstance(out, html.Div)
