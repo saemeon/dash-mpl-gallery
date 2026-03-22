@@ -364,21 +364,29 @@ def _wire_wizard(
                 renderer, has_fig_data, True, fig_data, _img_b64, kwargs
             ))
     else:
+        _fig_states2 = [State(element_id, "figure")] if has_fig_data else []
+
         @dash.callback(
             Output(preview_id, "src"),
             Input(generate_id, "n_clicks"),
             Input(interval_id, "n_intervals"),
-            State(element_id, "figure"),
+            *_fig_states2,
             *config.states,
             prevent_initial_call=True,
         )
-        def generate_preview(n_clicks, n_intervals, _fig_data, *field_values):
+        def generate_preview(n_clicks, n_intervals, *args):
             if not n_clicks and not n_intervals:
                 return dash.no_update
-            kwargs = config.build_kwargs(field_values)
+            if has_fig_data:
+                _fig_data, *field_values = args
+            else:
+                _fig_data, field_values = {}, args
+            kwargs = config.build_kwargs(tuple(field_values))
             return _to_src(_call_renderer(
                 renderer, has_fig_data, False, _fig_data, "", kwargs
             ))
+
+    _fig_states_ag = [State(element_id, "figure")] if has_fig_data else []
 
     if config.states:
         @dash.callback(
@@ -386,11 +394,15 @@ def _wire_wizard(
             *[Input(s.component_id, s.component_property) for s in config.states],
             State(autogenerate_id, "value"),
             State(snapshot_store_id, "data"),
-            State(element_id, "figure"),
+            *_fig_states_ag,
             prevent_initial_call=True,
         )
         def autogenerate_preview(*args):
-            *field_values, autogen, _img_b64, _fig_data = args
+            if has_fig_data:
+                *field_values, autogen, _img_b64, _fig_data = args
+            else:
+                *field_values, autogen, _img_b64 = args
+                _fig_data = {}
             if not autogen:
                 return dash.no_update
             if has_snapshot and not _img_b64:
@@ -400,16 +412,22 @@ def _wire_wizard(
                 renderer, has_fig_data, has_snapshot, _fig_data, _img_b64 or "", kwargs
             ))
 
+    _fig_states_dl = [State(element_id, "figure")] if has_fig_data else []
+
     @dash.callback(
         Output(download_id, "data"),
         Input(f"{download_id}_btn", "n_clicks"),
         State(snapshot_store_id, "data"),
-        State(element_id, "figure"),
+        *_fig_states_dl,
         *config.states,
         prevent_initial_call=True,
     )
-    def download_figure(n_clicks, _img_b64, _fig_data, *field_values):
-        kwargs = config.build_kwargs(field_values)
+    def download_figure(n_clicks, _img_b64, *args):
+        if has_fig_data:
+            _fig_data, *field_values = args
+        else:
+            _fig_data, field_values = {}, args
+        kwargs = config.build_kwargs(tuple(field_values))
         return dcc.send_bytes(
             _call_renderer(
                 renderer, has_fig_data, has_snapshot, _fig_data, _img_b64 or "", kwargs
@@ -516,6 +534,8 @@ def capture_graph(
         A :class:`CaptureStrategy` overriding the built-in Plotly strategy.
     preprocess :
         Custom JS preprocess code, overriding the strategy's default.
+        **Security:** This executes as JavaScript in the browser.
+        Never pass untrusted user input here.
     filename :
         Download filename. Defaults to ``"figure.png"``.
     field_components :

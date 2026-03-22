@@ -34,6 +34,10 @@ class CaptureStrategy:
     capture :
         JS code that performs the actual capture.  Receives ``(el, opts)``
         and must return a base64 data-URI string (or a Promise thereof).
+
+    .. warning::
+        Both fields execute as JavaScript in the browser.
+        Never pass untrusted user input into these fields.
     """
 
     preprocess: str | None = None
@@ -221,12 +225,15 @@ def build_capture_js(
 
     # Element lookup — Plotly-aware (look for .js-plotly-plot inside container)
     # For non-Plotly strategies, graphDiv === el which is fine.
+    # Escape element_id to prevent JS injection via crafted component IDs
+    safe_id = element_id.replace("\\", "\\\\").replace("'", "\\'")
+
     js_head = f"""
             async function({js_args}) {{
                 if (!n_clicks && !n_intervals) {{
                     return window.dash_clientside.no_update;
                 }}
-                const el = document.getElementById('{element_id}');
+                const el = document.getElementById('{safe_id}');
                 if (!el) return window.dash_clientside.no_update;
                 const graphDiv =
                     el.querySelector('.js-plotly-plot') || el;
