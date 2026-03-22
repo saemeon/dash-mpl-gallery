@@ -41,7 +41,7 @@ def register_renderer(type_: type, renderer: Callable[[Any], Any]) -> None:
 
         import pandas as pd
         from dash import dash_table
-        from dash_fn_interact import register_renderer
+        from dash_fn_forms import register_renderer
 
         register_renderer(
             pd.DataFrame,

@@ -6,8 +6,8 @@
 from __future__ import annotations
 
 from dash import dcc, html
-from dash_fn_interact import FnForm
-from dash_fn_interact.fn_interact import FnPanel, _cached_caller, build_fn_panel
+from dash_fn_forms import FnForm
+from dash_fn_forms.fn_interact import FnPanel, _cached_caller, build_fn_panel
 
 
 def _panel(fn, **kwargs):
@@ -224,7 +224,7 @@ def test_build_fn_panel_cache_true():
 
 
 def test_make_hashable_scalar_passthrough():
-    from dash_fn_interact.fn_interact import _make_hashable
+    from dash_fn_forms.fn_interact import _make_hashable
 
     assert _make_hashable(42) == 42
     assert _make_hashable("hello") == "hello"
@@ -233,7 +233,7 @@ def test_make_hashable_scalar_passthrough():
 
 
 def test_make_hashable_list_becomes_tuple():
-    from dash_fn_interact.fn_interact import _make_hashable
+    from dash_fn_forms.fn_interact import _make_hashable
 
     result = _make_hashable([1, 2, 3])
     assert result == (1, 2, 3)
@@ -241,14 +241,14 @@ def test_make_hashable_list_becomes_tuple():
 
 
 def test_make_hashable_nested_list():
-    from dash_fn_interact.fn_interact import _make_hashable
+    from dash_fn_forms.fn_interact import _make_hashable
 
     result = _make_hashable([["a", "b"], "c"])
     assert result == (("a", "b"), "c")
 
 
 def test_make_hashable_empty_list():
-    from dash_fn_interact.fn_interact import _make_hashable
+    from dash_fn_forms.fn_interact import _make_hashable
 
     assert _make_hashable([]) == ()
 
@@ -327,7 +327,7 @@ def test_cached_caller_unhashable_falls_back_to_direct_call():
     caller = _cached_caller(fn, cfg, maxsize=128)
 
     # Patch _make_hashable to raise TypeError to simulate unhashable
-    import dash_fn_interact.fn_interact as _fi
+    import dash_fn_forms.fn_interact as _fi
     original = _fi._make_hashable
 
     def _raise(_):

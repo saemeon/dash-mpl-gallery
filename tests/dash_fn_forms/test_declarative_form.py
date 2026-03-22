@@ -9,9 +9,9 @@ from typing import Annotated, Literal
 
 import pytest
 from dash import State
-from dash_fn_interact import Field
-from dash_fn_interact._forms import Form
-from dash_fn_interact._spec import FieldHook  # noqa: E402
+from dash_fn_forms import Field
+from dash_fn_forms._forms import Form
+from dash_fn_forms._spec import FieldHook  # noqa: E402
 
 # ── basic field collection ─────────────────────────────────────────────────────
 

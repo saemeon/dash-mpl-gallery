@@ -13,7 +13,7 @@ from __future__ import annotations
 import dash
 import pytest
 from dash import html
-from dash_fn_interact import build_fn_panel
+from dash_fn_forms import build_fn_panel
 
 
 # ── auto-update panel (_on_change callback) ──────────────────────────────────

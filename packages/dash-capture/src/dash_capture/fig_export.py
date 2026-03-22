@@ -12,7 +12,7 @@ from typing import Any, cast
 import dash
 from dash import Input, Output, State, dcc, html
 
-from dash_fn_interact import Field, FieldHook, FnForm, FromComponent, field_id
+from dash_fn_forms import Field, FieldHook, FnForm, FromComponent, field_id
 from dash_capture._ids import id_generator
 from dash_capture.dropdown import build_dropdown
 from dash_capture.wizard import build_wizard
@@ -308,8 +308,8 @@ def graph_exporter(
         Dict mapping the same slot names to CSS class name strings.
     field_specs :
         Per-field customisation for renderer parameters, keyed by name.
-        Values may be a :class:`~dash_fn_interact.Field` or a bare
-        :class:`~dash_fn_interact.FieldHook`.  Use this to override a
+        Values may be a :class:`~dash_fn_forms.Field` or a bare
+        :class:`~dash_fn_forms.FieldHook`.  Use this to override a
         component, add a label, set min/max, etc.
 
         Example::

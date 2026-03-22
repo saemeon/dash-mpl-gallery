@@ -1,4 +1,4 @@
-"""interact() demo — dash-fn-interact equivalent of ipywidgets.interact().
+"""interact() demo — dash-fn-forms equivalent of ipywidgets.interact().
 
 Nine panels on one page:
 
@@ -336,7 +336,7 @@ app.layout = html.Div(
     children=[
         html.H1("interact() demo", style={"marginBottom": "8px"}),
         html.P(
-            "dash-fn-interact equivalent of ipywidgets.interact(). "
+            "dash-fn-forms equivalent of ipywidgets.interact(). "
             "Panels 1–5: various return types. Panels 6–7: auto-rendered objects.",
             style={"color": "#666", "marginBottom": "32px"},
         ),

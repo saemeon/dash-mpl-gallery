@@ -13,7 +13,7 @@ from typing import Literal
 import pytest
 from dash import dcc
 import dash_mantine_components as dmc
-from dash_fn_interact import Field, FnForm
+from dash_fn_forms import Field, FnForm
 
 
 class _Color(Enum):

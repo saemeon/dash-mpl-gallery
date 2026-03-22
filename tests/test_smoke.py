@@ -1,5 +1,5 @@
-import dash_fn_interact
+import dash_fn_forms
 
 
 def test_import():
-    assert dash_fn_interact
+    assert dash_fn_forms

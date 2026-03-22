@@ -82,7 +82,7 @@ app.run(debug=True)
 
 ```python
 from dash_interact import page
-from dash_fn_interact import Field
+from dash_fn_forms import Field
 
 @page.interact(amplitude=(0.1, 3.0, 0.1))   # tuple → min/max/step
 def sine_wave(
@@ -98,7 +98,7 @@ def sine_wave(
 ```python
 import pandas as pd
 from dash import dash_table
-from dash_fn_interact import register_renderer
+from dash_fn_forms import register_renderer
 
 register_renderer(
     pd.DataFrame,
@@ -117,7 +117,7 @@ This repo contains two packages:
 | Package | Install | Description |
 |---------|---------|-------------|
 | `dash-interact` | `pip install dash-interact` | pyplot-style page API (`page`, `interact`, `Page`) |
-| `dash-fn-interact` | `pip install dash-fn-interact` | headless engine (`build_fn_panel`, `FnForm`, `Field`) |
+| `dash-fn-forms` | `pip install dash-fn-forms` | headless engine (`build_fn_panel`, `FnForm`, `Field`) |
 
 Most users should install `dash-interact` — it includes the engine.
 

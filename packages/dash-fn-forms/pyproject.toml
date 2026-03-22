@@ -1,5 +1,5 @@
 [project]
-name = "dash-fn-interact"
+name = "dash-fn-forms"
 dynamic = ["version"]
 description = "Introspection-based UI engine for Plotly Dash — transform type-hinted Python functions into reactive Dash forms."
 keywords = ["plotly", "dash", "visualization", "dashboard"]
@@ -36,15 +36,15 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 root = "../.."
-write_to = "packages/dash-fn-interact/src/dash_fn_interact/_version.py"
+write_to = "packages/dash-fn-forms/src/dash_fn_forms/_version.py"
 version_scheme = "post-release"
 local_scheme = "no-local-version"
 
 [tool.setuptools.dynamic]
-version = { attr = "dash_fn_interact._version.__version__" }
+version = { attr = "dash_fn_forms._version.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-dash_fn_interact = ["py.typed"]
+dash_fn_forms = ["py.typed"]

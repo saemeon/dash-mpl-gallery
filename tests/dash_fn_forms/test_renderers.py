@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dash import dcc, html
-from dash_fn_interact._renderers import register_renderer, to_component
+from dash_fn_forms._renderers import register_renderer, to_component
 
 # ── built-ins ─────────────────────────────────────────────────────────────────
 
@@ -187,7 +187,7 @@ def test_dict_figure_value_rendered_as_graph():
 
 
 def test_error_returns_pre():
-    from dash_fn_interact._renderers import _error
+    from dash_fn_forms._renderers import _error
 
     result = _error("something went wrong")
     assert isinstance(result, html.Pre)

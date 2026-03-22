@@ -1,7 +1,7 @@
 # Copyright (c) Simon Niederberger.
 # Distributed under the terms of the MIT License.
 
-"""Field component functions for dash-fn-interact.
+"""Field component functions for dash-fn-forms.
 
 Pass ``_field_components`` to :func:`~dash_interact.build_config` as a
 string shorthand or any callable matching :class:`FieldMaker`.  When omitted,
@@ -31,7 +31,7 @@ from typing import Any, Literal, Protocol, get_args, get_origin
 
 from dash import dcc, html
 
-from dash_fn_interact._spec import Field
+from dash_fn_forms._spec import Field
 
 
 def _list_literal_args(f: Any) -> tuple | None:

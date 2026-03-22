@@ -2,8 +2,8 @@
 members = ["packages/*"]
 
 [tool.uv.sources]
-dash-fn-interact = { workspace = true }
-s5ndt = { workspace = true }
+dash-fn-forms = { workspace = true }
+dash-capture = { workspace = true }
 
 [dependency-groups]
 test = ["pytest", "pytest-cov"]

@@ -12,8 +12,8 @@ from enum import Enum
 from typing import Annotated, Literal
 
 import pytest
-from dash_fn_interact import Field, FnForm
-from dash_fn_interact._forms import Form, _check_visible
+from dash_fn_forms import Field, FnForm
+from dash_fn_forms._forms import Form, _check_visible
 
 
 class _Color(Enum):
@@ -436,7 +436,7 @@ def test_reserved_param_skipped():
 
 def test_field_hook_as_default():
     """FieldHook passed as default value creates Field(hook=...)."""
-    from dash_fn_interact._spec import FieldHook
+    from dash_fn_forms._spec import FieldHook
 
     class ConstHook(FieldHook):
         def get_default(self, *args):
@@ -500,7 +500,7 @@ def test_build_kwargs_datetime_invalid_iso():
 
 def test_field_hook_as_kwarg():
     """Passing a FieldHook directly as a kwarg creates Field(hook=...)."""
-    from dash_fn_interact._spec import FieldHook
+    from dash_fn_forms._spec import FieldHook
 
     class ConstHook2(FieldHook):
         def get_default(self, *args):

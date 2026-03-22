@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 
 import pytest
 from dash import dcc
-from dash_fn_interact import Field, FnForm, fixed
+from dash_fn_forms import Field, FnForm, fixed
 
 
 class _Mode(Enum):
@@ -561,14 +561,14 @@ def test_named_to_values_datetime_emits_two_entries():
 
 
 def test_field_id_format():
-    from dash_fn_interact import field_id
+    from dash_fn_forms import field_id
 
     result = field_id("myform", "amplitude")
     assert result == "_dft_field_myform_amplitude"
 
 
 def test_field_id_matches_form_field_ref():
-    from dash_fn_interact import field_id
+    from dash_fn_forms import field_id
 
     def fn(amplitude: float = 1.0):
         pass
@@ -974,7 +974,7 @@ def test_pydantic_field_constraints():
     """_read_constraint_meta reads ge/le from a pydantic FieldInfo."""
     from pydantic import Field as PydanticField
 
-    from dash_fn_interact._forms import _read_constraint_meta
+    from dash_fn_forms._forms import _read_constraint_meta
 
     pyd_field = PydanticField(ge=0.0, le=10.0)
     result = _read_constraint_meta(pyd_field)
@@ -986,7 +986,7 @@ def test_annotated_types_constraints():
     """_read_constraint_meta reads Ge/Le from annotated_types metadata."""
     from annotated_types import Ge
 
-    from dash_fn_interact._forms import _read_constraint_meta
+    from dash_fn_forms._forms import _read_constraint_meta
 
     result = _read_constraint_meta(Ge(5.0))
     assert result.get("min") == 5.0

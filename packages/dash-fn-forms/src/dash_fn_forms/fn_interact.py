@@ -11,8 +11,8 @@ from typing import Any
 
 from dash import Input, Output, State, callback, dcc, html
 
-from dash_fn_interact._forms import FnForm
-from dash_fn_interact._renderers import to_component
+from dash_fn_forms._forms import FnForm
+from dash_fn_forms._renderers import to_component
 
 
 class FnPanel(html.Div):

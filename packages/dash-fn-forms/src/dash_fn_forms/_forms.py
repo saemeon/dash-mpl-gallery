@@ -29,7 +29,7 @@ from typing import (
 import dash
 from dash import Input, Output, State, dcc, html
 
-from dash_fn_interact._spec import Field, FieldHook, _FieldFixed
+from dash_fn_forms._spec import Field, FieldHook, _FieldFixed
 
 _CONSTRAINT_ATTRS: list[tuple[str, str]] = [
     ("ge", "min"),
@@ -185,7 +185,7 @@ class Form(html.Div):
         if config_id in _registered_config_ids:
             if not _replace:
                 warnings.warn(
-                    f"dash-fn-interact: config_id {config_id!r} is already in use. "
+                    f"dash-fn-forms: config_id {config_id!r} is already in use. "
                     "Duplicate IDs will cause Dash callback errors. "
                     "Pass _replace=True to suppress this warning.",
                     UserWarning,
@@ -203,7 +203,7 @@ class Form(html.Div):
         fixed_values = _fixed_values or {}
         states = _build_states(config_id, _fields)
 
-        from dash_fn_interact._field_components import _resolve_field_maker
+        from dash_fn_forms._field_components import _resolve_field_maker
 
         field_maker = _resolve_field_maker(_field_components)
 

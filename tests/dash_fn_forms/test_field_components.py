@@ -12,7 +12,7 @@ from typing import Literal
 
 import pytest
 from dash import dcc
-from dash_fn_interact import Field, FnForm
+from dash_fn_forms import Field, FnForm
 
 
 class _Color(Enum):
@@ -29,7 +29,7 @@ def _form(fn, **kwargs):
 
 def _find(component, cls):
     """Return first component of type cls in the tree, or None."""
-    from tests.dash_fn_interact.test_forms import _all_components
+    from tests.dash_fn_forms.test_forms import _all_components
 
     return next((c for c in _all_components(component) if isinstance(c, cls)), None)
 
@@ -342,7 +342,7 @@ def test_tuple_produces_text_input():
 
 
 def test_resolve_field_maker_callable():
-    from dash_fn_interact._field_components import _resolve_field_maker, make_dcc_field
+    from dash_fn_forms._field_components import _resolve_field_maker, make_dcc_field
 
     sentinel = make_dcc_field
     result = _resolve_field_maker(sentinel)
@@ -351,14 +351,14 @@ def test_resolve_field_maker_callable():
 
 def test_resolve_field_maker_invalid_raises():
     import pytest
-    from dash_fn_interact._field_components import _resolve_field_maker
+    from dash_fn_forms._field_components import _resolve_field_maker
 
     with pytest.raises(ValueError, match="Unknown"):
         _resolve_field_maker("invalid_maker")
 
 
 def test_resolve_field_maker_auto_returns_dmc():
-    from dash_fn_interact._field_components import _resolve_field_maker, make_dmc_field
+    from dash_fn_forms._field_components import _resolve_field_maker, make_dmc_field
 
     # dmc is installed, so auto should return make_dmc_field
     result = _resolve_field_maker("auto")
@@ -366,7 +366,7 @@ def test_resolve_field_maker_auto_returns_dmc():
 
 
 def test_resolve_field_maker_none_returns_dmc():
-    from dash_fn_interact._field_components import _resolve_field_maker, make_dmc_field
+    from dash_fn_forms._field_components import _resolve_field_maker, make_dmc_field
 
     result = _resolve_field_maker(None)
     assert result is make_dmc_field

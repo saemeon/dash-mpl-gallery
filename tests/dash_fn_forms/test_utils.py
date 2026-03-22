@@ -1,11 +1,11 @@
 # Copyright (c) Simon Niederberger.
 # Distributed under the terms of the MIT License.
 
-"""Tests for dash_fn_interact.utils."""
+"""Tests for dash_fn_forms.utils."""
 
 from __future__ import annotations
 
-from dash_fn_interact.utils import _caller_name, _in_jupyter
+from dash_fn_forms.utils import _caller_name, _in_jupyter
 
 
 def test_caller_name_returns_string():

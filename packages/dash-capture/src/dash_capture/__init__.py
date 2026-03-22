@@ -10,7 +10,7 @@ except PackageNotFoundError:
     __version__ = "unknown"
 
 
-from dash_fn_interact import Field, FieldHook, FromComponent
+from dash_fn_forms import Field, FieldHook, FromComponent
 from dash_capture._ids import id_generator
 from dash_capture.dropdown import build_dropdown
 from dash_capture.fig_export import FromPlotly, graph_exporter
