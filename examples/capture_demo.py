@@ -157,6 +157,22 @@ def figdata_renderer(
     _target.write(text.encode())
 
 
+def error_renderer(
+    _target,
+    _snapshot_img,
+    max_size_kb: int = 50,
+):
+    """Demonstrates error display — fails if image exceeds max_size_kb."""
+    data = _snapshot_img()
+    size_kb = len(data) / 1024
+    if size_kb > max_size_kb:
+        raise ValueError(
+            f"Image too large: {size_kb:.0f} KB (max {max_size_kb} KB). "
+            f"Try a smaller chart or lower resolution."
+        )
+    _target.write(data)
+
+
 # ---------------------------------------------------------------------------
 # App layout
 # ---------------------------------------------------------------------------
@@ -303,6 +319,35 @@ app.layout = html.Div(
             html.P("Same border renderer from example 3, but applied to a table."),
             capture_element("demo-table", renderer=literal_and_bool_renderer,
                             trigger="Capture table (styled)"),
+        ]),
+
+        # 11. Format selection
+        html.Hr(),
+        html.H3("Format selection"),
+        html.Div(style=SECTION, children=[
+            html.H4("11. Capture as JPEG"),
+            html.P("plotly_strategy(format='jpeg') — smaller file size, lossy."),
+            capture_graph("demo-graph", renderer=passthrough,
+                          trigger="Capture (JPEG)",
+                          strategy=plotly_strategy(format="jpeg")),
+        ]),
+
+        html.Div(style=SECTION, children=[
+            html.H4("12. Capture as SVG"),
+            html.P("plotly_strategy(format='svg') — vector format, infinite zoom."),
+            capture_graph("demo-graph", renderer=passthrough,
+                          trigger="Capture (SVG)",
+                          strategy=plotly_strategy(format="svg")),
+        ]),
+
+        # 13. Error display
+        html.Hr(),
+        html.H3("Error handling"),
+        html.Div(style=SECTION, children=[
+            html.H4("13. Renderer that raises an error"),
+            html.P("The error message is shown in red below the preview."),
+            capture_graph("demo-graph", renderer=error_renderer,
+                          trigger="Capture (error demo)"),
         ]),
     ],
 )
