@@ -4,8 +4,9 @@
 #   1. Plotly chart capture at exact resolution
 #   2. Plotly capture with strip patches (title/legend removed)
 #   3. Table capture via html2canvas
-#   4. Multiple captures on one page
-#   5. Server-side post-processing with magick (if installed)
+#   4. Download captured image
+#   5. Format selection (PNG/JPEG/SVG)
+#   6. Batch capture (multiple charts at once)
 
 library(shiny)
 library(plotly)
@@ -48,6 +49,23 @@ ui <- fluidPage(
   p("Captures the chart and offers a download."),
   actionButton("cap_download", "Capture for download"),
   uiOutput("download_ui"),
+  hr(),
+
+  h4("5. Format selection"),
+  p("Choose output format before capture."),
+  selectInput("format_select", "Format:", c("png", "jpeg", "webp", "svg"), selected = "png"),
+  actionButton("cap_format", "Capture with selected format"),
+  uiOutput("preview_format"),
+  hr(),
+
+  h4("6. Batch capture"),
+  p("Captures two independent charts in a single call."),
+  fluidRow(
+    column(6, plotlyOutput("batch_plot1", height = "250px")),
+    column(6, plotlyOutput("batch_plot2", height = "250px"))
+  ),
+  actionButton("cap_batch", "Capture both charts"),
+  uiOutput("preview_batch"),
 )
 
 # --- Server ---
@@ -163,6 +181,67 @@ server <- function(input, output, session) {
       writeBin(captured_bytes(), file)
     }
   )
+
+  # --- 5. Format selection ---
+  observeEvent(input$cap_format, {
+    fmt <- input$format_select
+    capture_plotly(
+      "scatter_plot",
+      strategy = plotly_strategy(width = 1200, height = 800, format = fmt),
+      input_id = ".shinycapture.format_demo"
+    )
+  })
+
+  observeEvent(input[[".shinycapture.format_demo"]], {
+    b64 <- input[[".shinycapture.format_demo"]]
+    fmt <- input$format_select
+    output$preview_format <- renderUI({
+      tagList(
+        p(strong(paste0("Captured as ", toupper(fmt), ":"))),
+        tags$img(src = b64, style = "max-width:600px; border:1px solid #ccc;")
+      )
+    })
+  })
+
+  # --- 6. Batch capture ---
+  output$batch_plot1 <- renderPlotly({
+    plot_ly(x = 1:10, y = (1:10)^2, type = "scatter", mode = "lines",
+            name = "Quadratic") %>%
+      layout(title = "Chart A")
+  })
+
+  output$batch_plot2 <- renderPlotly({
+    plot_ly(x = 1:10, y = sqrt(1:10), type = "bar", name = "Sqrt") %>%
+      layout(title = "Chart B")
+  })
+
+  observeEvent(input$cap_batch, {
+    capture_batch(
+      c("batch_plot1", "batch_plot2"),
+      strategies = plotly_strategy(strip_title = TRUE, width = 800, height = 500)
+    )
+  })
+
+  observeEvent(input[[".shinycapture.batch_plot1"]], {
+    b64_1 <- input[[".shinycapture.batch_plot1"]]
+    b64_2 <- input[[".shinycapture.batch_plot2"]]
+
+    output$preview_batch <- renderUI({
+      imgs <- list()
+      if (!is.null(b64_1)) {
+        imgs <- c(imgs, list(tags$img(src = b64_1,
+          style = "max-width:350px; border:1px solid #ccc; margin-right:8px;")))
+      }
+      if (!is.null(b64_2)) {
+        imgs <- c(imgs, list(tags$img(src = b64_2,
+          style = "max-width:350px; border:1px solid #ccc;")))
+      }
+      tagList(
+        p(strong("Batch capture results:")),
+        div(style = "display:flex;", imgs)
+      )
+    })
+  })
 }
 
 shinyApp(ui, server)

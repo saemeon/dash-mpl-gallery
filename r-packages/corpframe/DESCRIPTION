@@ -12,8 +12,10 @@ Description: Wraps ggplot2 plots or raw PNG images with a corporate design
 License: MIT + file LICENSE
 URL: https://github.com/saemeon/dash-interact
 Imports:
-    ggplot2
+    ggplot2,
+    grid
 Suggests:
+    png,
     shiny (>= 1.7.0),
     shinycapture,
     jsonlite,

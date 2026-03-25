@@ -101,6 +101,21 @@
     framed_rv(.reframe())
   }, ignoreInit = TRUE)
 
+  # Auto-update preview when any text field changes (debounced 500ms)
+  fields_debounced <- shiny::debounce(shiny::reactive({
+    list(
+      input[[title_id]],
+      input[[subtitle_id]],
+      input[[footnotes_id]],
+      input[[sources_id]]
+    )
+  }), millis = 500)
+
+  shiny::observeEvent(fields_debounced(), {
+    shiny::req(raw_rv())
+    framed_rv(.reframe())
+  }, ignoreInit = TRUE)
+
   output[[download_id]] <- shiny::downloadHandler(
     filename = function() filename,
     content = function(file) {

@@ -34,3 +34,22 @@ shinycapture_deps <- function() {
     script = "shinycapture.js"
   )
 }
+
+
+#' HTML dependency for vendored html2canvas
+#'
+#' Returns an \code{htmltools::htmlDependency} that loads the vendored
+#' html2canvas.min.js. Called automatically by \code{capture_element()} when
+#' using \code{html2canvas_strategy()}.
+#'
+#' @return An \code{htmlDependency} object.
+#' @export
+html2canvas_deps <- function() {
+  htmltools::htmlDependency(
+    name = "html2canvas",
+    version = "1.4.1",
+    package = "shinycapture",
+    src = "shinycapture",
+    script = "html2canvas.min.js"
+  )
+}
