@@ -1,45 +1,66 @@
-[![PyPI](https://img.shields.io/pypi/v/mypackage)](https://pypi.org/project/mypackage/)
-[![Python](https://img.shields.io/pypi/pyversions/mypackage)](https://pypi.org/project/mypackage/)
+[![Python](https://img.shields.io/pypi/pyversions/dash-interact)](https://pypi.org/project/dash-interact/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
-[![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json)](https://github.com/astral-sh/ty)
-[![prek](https://img.shields.io/badge/prek-checked-blue)](https://github.com/saemeon/prek)
 
-# mypackage
+# dash-fn-tools
 
-A short description of what this package does.
+A framework for packaging organizational chart standards as installable Python libraries, with companion tools for interactive dashboards and one-click export from Dash and Shiny.
 
-**Full documentation at [saemeon.github.io/mypackage](https://saemeon.github.io/mypackage/)**
+## Packages
 
-## Installation
+### Framework
 
-```bash
-pip install mypackage
+| Package | Description |
+|---------|-------------|
+| **mpl-brand** | Generic matplotlib corporate-design framework. Subclass, configure hooks, ship as `pip install your-brand`. |
+| **corpframe** | Example implementation — a concrete corporate design using mpl-brand. |
+
+### Forms & Interaction (Dash)
+
+| Package | Install | Description |
+|---------|---------|-------------|
+| **dash-fn-forms** | `pip install dash-fn-forms` | Generate Dash forms from typed Python function signatures. |
+| **dash-interact** | `pip install dash-interact` | pyplot-style convenience layer — `page.interact()`, HTML shorthands. Includes dash-fn-forms. |
+
+### Capture & Export
+
+| Package | Language | Description |
+|---------|----------|-------------|
+| **dash-capture** | Python/Dash | Browser capture pipeline — preprocess, capture, postprocess. Pluggable strategies for Plotly, html2canvas, canvas. |
+| **shinycapture** | R/Shiny | Same capture pipeline for Shiny applications. |
+| **corpframe** (R) | R | Thin R wrapper — calls Python corpframe via subprocess. |
+
+## Architecture
+
+```
+mpl-brand                    ← framework: "package your chart standards"
+  └── corpframe              ← your company's implementation
+
+dash-fn-forms                ← framework: "forms from functions"
+  ├── dash-interact          ← convenience: page API, interact()
+  └── dash-capture           ← toolkit: browser capture pipeline
+        └── corpframe[dash]  ← one-click corporate export
+
+shinycapture                 ← toolkit: browser capture for Shiny
+  └── corpframe (R)          ← one-click corporate export in R
 ```
 
-## Quick Start
+## Quick Example
 
 ```python
-import mypackage
+from dash_interact import page
 
-# example usage
+page.H1("My App")
+
+@page.interact
+def sine_wave(amplitude: float = 1.0, frequency: float = 2.0):
+    import numpy as np, plotly.graph_objects as go
+    x = np.linspace(0, 6 * np.pi, 600)
+    return go.Figure(go.Scatter(x=x, y=amplitude * np.sin(frequency * x)))
+
+page.run()
 ```
-
-# How to Track Template Changes
-
-1. Add the remote
-run `git remote add template https://github.com/saemeon/pytemplate.git`
-
-2. Fetch the data
-run `git fetch template`
-
-3. Create a local branch that tracks the template's main
-run `git checkout -b pytemplate-main template/main`
-
-4. Switch back to your work branch and merge the template in
-run `git checkout main`
-run `git merge pytemplate-main --allow-unrelated-histories`
 
 ## License
 

@@ -1,17 +1,16 @@
-site_name: mypackage
-site_description: A short description of your package
+site_name: dash-interact
+site_description: Build interactive Plotly Dash apps from type-hinted Python functions
 site_author: Simon Niederberger
-site_url: https://saemeon.github.io/mypackage/
+site_url: https://saemeon.github.io/dash-interact/
 
-repo_url: https://github.com/saemeon/mypackage
-repo_name: saemeon/mypackage
+repo_url: https://github.com/saemeon/dash-interact
+repo_name: saemeon/dash-interact
 
 copyright: "Copyright &copy; 2026 Simon Niederberger"
 
 nav:
-  - Overview: "index.md"
-  - API: "api.md"
-  - Examples: "generated/gallery"
+  - dash-interact: "index.md"
+  - dash-fn-forms: "fn-forms.md"
 
 theme:
   name: material
@@ -87,7 +86,7 @@ plugins:
       handlers:
         python:
           # where to look for python modules. not strictly required, but helps, if building from an arbitrary folder
-          paths: [src]
+          paths: [packages/dash-interact/src, packages/dash-fn-forms/src]
           options:
             docstring_style: numpy
             docstring_section_style: spacy
@@ -114,17 +113,13 @@ plugins:
       version_selector: True
       css_dir: css
       javascript_dir: js
-  - gallery:
-      examples_dirs: examples
-      gallery_dirs: docs/generated/gallery
-      within_subsection_order: FileNameSortKey
 extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 extra_css:
   - assets/extra.css
 
 watch:
-  - src
+  - packages
 
 remote_branch: documentation
 
@@ -135,4 +130,4 @@ extra:
     default: latest
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/saemeon/mypackage
+      link: https://github.com/saemeon/dash-interact

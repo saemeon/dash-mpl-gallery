@@ -1,0 +1,13 @@
+{
+  "title": "Multi-Plot Gallery Demo",
+  "plots": {
+    "revenue_chart": {
+      "path": "./revenue_chart",
+      "description": "Quarterly revenue with configurable title and DPI"
+    },
+    "inflation": {
+      "path": "./inflation",
+      "description": "CPI inflation tracking with type-hinted parameters"
+    }
+  }
+}

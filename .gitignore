@@ -158,4 +158,4 @@ _notes.md
 _local_notes.md
 
 # setuptools-scm generated version file
-src/*/_version.py
+**/_version.py

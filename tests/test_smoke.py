@@ -1,5 +1,5 @@
-import mypackage
+import dash_fn_forms
 
 
 def test_import():
-    assert mypackage.__version__ != "unknown"
+    assert dash_fn_forms

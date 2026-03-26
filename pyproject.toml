@@ -1,72 +1,53 @@
-[project]
-name = "mypackage"
-dynamic = ["version"]
-description = "A short description of your package"
-keywords = ["keyword1", "keyword2"]
-classifiers = [
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
-    "Operating System :: OS Independent",
-]
-readme = "README.md"
-license = "MIT"
-authors = [
-    { name = "Simon Niederberger", email = "s.niederberger@hotmail.com" },
-]
-maintainers = [
-    { name = "Simon Niederberger", email = "s.niederberger@hotmail.com" },
-]
-requires-python = ">=3.10"
-dependencies = []
+[tool.uv.workspace]
+members = ["packages/*"]
+exclude = ["packages/corpframe-gallery", "packages/mcd", "packages/corpplt", "packages/corporate-design-packager"]
 
-[project.urls]
-Homepage = "https://github.com/saemeon/mypackage"
-Repository = "https://github.com/saemeon/mypackage"
+[tool.uv.sources]
+dash-fn-forms = { workspace = true }
+dash-capture = { workspace = true }
+mpl-brandpacker = { workspace = true }
+corpframe = { workspace = true }
+gallery-viewer = { workspace = true }
 
 [dependency-groups]
 test = ["pytest", "pytest-cov"]
-doc = [
-    "mkdocs",
-    "mkdocs-material",
-    "mkdocstrings[python]",
-    "mike",
-]
+doc = ["mkdocs", "mkdocs-material", "mkdocstrings[python]", "mike"]
 dev = [
     "ruff",
     "prek",
     "ty",
+    "numpy",
+    "matplotlib",
+    "pandas",
+    "ipykernel>=7.2.0",
+    "ipywidgets>=8.1.8",
+    "pydantic>=2.12.5",
+    "dash-mantine-components>=2.6.0",
+    "dash-bootstrap-components>=2.0.4",
+    "annotated-types>=0.7.0",
+    "dash[testing]",
+    "dash-ace>=0.2.1",
     { include-group = "test" },
     { include-group = "doc" },
 ]
 
-[build-system]
-requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools_scm]
-version_scheme = "post-release"
-local_scheme = "no-local-version"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-mypackage = ["py.typed"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=src/mypackage --cov-report=term-missing"
+addopts = "--cov=packages --cov-report=term-missing"
+
+[tool.ty.environment]
+python = ".venv"
 
 [tool.ty.src]
-include = ["src"]
+include = ["packages"]
+
+[tool.mypy]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "RUF", "PERF"]
-ignore = ["E203"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "PERF"]
+ignore = ["E203", "E501"]
