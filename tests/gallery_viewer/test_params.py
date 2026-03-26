@@ -2,10 +2,10 @@
 
 from gallery_viewer.params import (
     ParamSpec,
+    clear_registered_params,
     detect_params,
     gallery_param,
     get_registered_params,
-    clear_registered_params,
     parse_typed_assignments,
 )
 
@@ -15,22 +15,22 @@ class TestParseTypedAssignments:
         params = parse_typed_assignments('title: str = "Q4 Revenue"')
         assert "title" in params
         assert params["title"].default == "Q4 Revenue"
-        assert params["title"].annotation == str
+        assert params["title"].annotation is str
 
     def test_int_default(self):
         params = parse_typed_assignments("dpi: int = 150")
         assert params["dpi"].default == 150
-        assert params["dpi"].annotation == int
+        assert params["dpi"].annotation is int
 
     def test_float_default(self):
         params = parse_typed_assignments("scale: float = 1.5")
         assert params["scale"].default == 1.5
-        assert params["scale"].annotation == float
+        assert params["scale"].annotation is float
 
     def test_bool_default(self):
         params = parse_typed_assignments("verbose: bool = True")
         assert params["verbose"].default is True
-        assert params["verbose"].annotation == bool
+        assert params["verbose"].annotation is bool
 
     def test_multiple_assignments(self):
         source = 'title: str = "Hello"\ndpi: int = 300\nscale: float = 2.0'
@@ -102,7 +102,7 @@ class TestGalleryParamDecorator:
             pass
 
         params = get_registered_params()
-        assert params["name"].annotation == str
+        assert params["name"].annotation is str
 
     def test_clear_params(self):
         @gallery_param

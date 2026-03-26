@@ -21,22 +21,23 @@ Usage::
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, dcc, html, dash_table, ctx
+from dash import Input, Output, State, ctx, dash_table, dcc, html
 
-from gallery_viewer._types import RunResult, ScriptSections
-from gallery_viewer.backend import StorageBackend, FileSystemBackend
-from gallery_viewer.params import detect_params
+from gallery_viewer._types import ScriptSections
+from gallery_viewer.backend import FileSystemBackend, StorageBackend
 from gallery_viewer.config import (
     add_plot_to_config,
     backends_from_config,
     load_config,
     save_config,
 )
+from gallery_viewer.params import detect_params
 
 # ---------------------------------------------------------------------------
 # Optional: dash-ace for syntax-highlighted editor
@@ -161,7 +162,7 @@ class Gallery:
         export_fn: Callable[[bytes], bytes] | None = None,
         extra_controls: Any = None,
         **backend_kwargs,
-    ) -> "Gallery":
+    ) -> Gallery:
         """Create a Gallery from a ``gallery.json`` config file.
 
         Parameters
@@ -392,7 +393,7 @@ class Gallery:
             if not names:
                 return html.Span("No plots", style={"color": "#666"})
             children = []
-            for i, name in enumerate(names):
+            for name in names:
                 desc = ""
                 if self._config_path:
                     config = load_config(self._config_path)
@@ -631,9 +632,7 @@ class Gallery:
             )
             def toggle_add_plot_modal(n_open, n_cancel, n_submit, is_open):
                 trigger = ctx.triggered_id
-                if trigger == "gv-add-plot-btn":
-                    return True
-                return False
+                return trigger == "gv-add-plot-btn"
 
             @app.callback(
                 Output("gv-add-plot-feedback", "children"),
@@ -679,7 +678,6 @@ def _inject_params(sections: ScriptSections, param_values: list) -> ScriptSectio
     Replaces the default values of typed assignments with the values
     from the UI input fields.
     """
-    import ast
     import re as _re
 
     params = detect_params(sections.configurator)
@@ -724,7 +722,7 @@ def _build_param_fields(configurator_source: str) -> list:
     fields = []
     for name, spec in params.items():
         label = name.replace("_", " ").title()
-        if spec.annotation == bool:
+        if spec.annotation is bool:
             field = dbc.Checkbox(
                 id={"type": "gv-param", "name": name},
                 label=label,

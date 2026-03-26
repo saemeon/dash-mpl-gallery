@@ -2,6 +2,7 @@
 
 from gallery_viewer._types import RunResult, ScriptSections
 from gallery_viewer.backend import FileSystemBackend, StorageBackend
+from gallery_viewer.config import load_config, save_config
 from gallery_viewer.gallery import Gallery
 from gallery_viewer.params import (
     ParamSpec,
@@ -9,8 +10,6 @@ from gallery_viewer.params import (
     gallery_param,
     parse_typed_assignments,
 )
-
-from gallery_viewer.config import load_config, save_config
 
 __all__ = [
     "Gallery",

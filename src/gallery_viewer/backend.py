@@ -19,9 +19,9 @@ import re
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from datetime import date as _date
 from pathlib import Path
-from typing import Callable
 
 import pandas as pd
 
@@ -105,7 +105,7 @@ def _run_sections(
     cwd: Path | None = None,
 ) -> RunResult:
     """Execute script sections in a subprocess, capturing output and plot."""
-    preview_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    preview_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)  # noqa: SIM115
     preview_path = Path(preview_file.name)
     preview_file.close()
 
@@ -122,7 +122,7 @@ def _run_sections(
     # Write script inside cwd/scripts/ so Path(__file__).parent.parent == cwd
     script_dir = (cwd / "scripts") if cwd else Path(tempfile.gettempdir())
     script_dir.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.NamedTemporaryFile(
+    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
         suffix=".py", mode="w", delete=False, dir=str(script_dir),
     )
     tmp.write(code)
@@ -222,7 +222,7 @@ class FileSystemBackend(StorageBackend):
         cls,
         base_dir: str | Path,
         **kwargs,
-    ) -> dict[str, "FileSystemBackend"]:
+    ) -> dict[str, FileSystemBackend]:
         """Auto-discover sub-plots from a directory.
 
         Each subdirectory of *base_dir* that contains a ``data/`` or

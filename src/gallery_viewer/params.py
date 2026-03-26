@@ -2,7 +2,7 @@
 
 Two ways to declare configurable parameters in gallery scripts:
 
-1. **Decorator** — register a function with typed arguments::
+1. **Decorator** -- register a function with typed arguments::
 
     from gallery_viewer import gallery_param
 
@@ -23,11 +23,11 @@ to auto-generate form fields via dash-fn-form.
 from __future__ import annotations
 
 import ast
+import contextlib
 import inspect
-import re
-import typing
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -208,10 +208,8 @@ def detect_params(configurator_source: str) -> dict[str, ParamSpec]:
                         default_idx = arg_idx - (len(node.args.args) - len(defaults))
                         default = ""
                         if default_idx >= 0 and default_idx < len(defaults):
-                            try:
+                            with contextlib.suppress(ValueError, TypeError):
                                 default = ast.literal_eval(defaults[default_idx])
-                            except (ValueError, TypeError):
-                                pass
 
                         params[name] = ParamSpec(
                             name=name, annotation=ann_type, default=default

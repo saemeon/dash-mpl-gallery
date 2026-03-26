@@ -1,10 +1,10 @@
 """Tests for gallery-viewer JSON config."""
 
 import json
-from pathlib import Path
 
 import pytest
 
+from gallery_viewer.backend import FileSystemBackend
 from gallery_viewer.config import (
     add_plot_to_config,
     backends_from_config,
@@ -12,7 +12,6 @@ from gallery_viewer.config import (
     remove_plot_from_config,
     save_config,
 )
-from gallery_viewer.backend import FileSystemBackend
 
 
 @pytest.fixture

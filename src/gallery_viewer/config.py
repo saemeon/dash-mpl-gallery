@@ -52,7 +52,7 @@ def save_config(config: dict, path: str | Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Write to temp file first, then rename (atomic on same filesystem)
-    tmp = tempfile.NamedTemporaryFile(
+    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
         mode="w", suffix=".json", dir=path.parent, delete=False,
     )
     try:
