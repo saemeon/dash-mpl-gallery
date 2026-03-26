@@ -1,53 +1,41 @@
-[tool.uv.workspace]
-members = ["packages/*"]
-exclude = ["packages/corpframe-gallery", "packages/mcd", "packages/corpplt", "packages/corporate-design-packager"]
-
-[tool.uv.sources]
-dash-fn-forms = { workspace = true }
-dash-capture = { workspace = true }
-mpl-brandpacker = { workspace = true }
-corpframe = { workspace = true }
-gallery-viewer = { workspace = true }
-
-[dependency-groups]
-test = ["pytest", "pytest-cov"]
-doc = ["mkdocs", "mkdocs-material", "mkdocstrings[python]", "mike"]
-dev = [
-    "ruff",
-    "prek",
-    "ty",
-    "numpy",
-    "matplotlib",
-    "pandas",
-    "ipykernel>=7.2.0",
-    "ipywidgets>=8.1.8",
-    "pydantic>=2.12.5",
-    "dash-mantine-components>=2.6.0",
-    "dash-bootstrap-components>=2.0.4",
-    "annotated-types>=0.7.0",
-    "dash[testing]",
-    "dash-ace>=0.2.1",
-    { include-group = "test" },
-    { include-group = "doc" },
+[project]
+name = "gallery-viewer"
+dynamic = ["version"]
+description = "Configurable versioned script gallery dashboard for Dash — browse, edit, and execute data visualization scripts"
+keywords = ["dash", "gallery", "viewer", "matplotlib", "versioning"]
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+]
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Simon Niederberger", email = "s.niederberger@hotmail.com" },
+]
+requires-python = ">=3.10"
+dependencies = [
+    "dash>=2.17",
+    "dash-bootstrap-components>=1.6",
+    "pandas>=2.0",
+    "pyarrow>=14.0",
 ]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "--cov=packages --cov-report=term-missing"
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
 
-[tool.ty.environment]
-python = ".venv"
+[tool.setuptools_scm]
+root = "../.."
+write_to = "packages/gallery-viewer/src/gallery_viewer/_version.py"
+version_scheme = "post-release"
+local_scheme = "no-local-version"
 
-[tool.ty.src]
-include = ["packages"]
+[tool.setuptools.dynamic]
+version = { attr = "gallery_viewer._version.__version__" }
 
-[tool.mypy]
-ignore_missing_imports = true
-
-[tool.ruff]
-line-length = 88
-target-version = "py310"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "PERF"]
-ignore = ["E203", "E501"]
+[tool.setuptools.packages.find]
+where = ["src"]
