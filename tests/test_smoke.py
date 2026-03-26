@@ -1,5 +1,5 @@
-import dash_fn_forms
+import gallery_viewer
 
 
 def test_import():
-    assert dash_fn_forms
+    assert gallery_viewer
