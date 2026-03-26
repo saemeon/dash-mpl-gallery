@@ -30,7 +30,7 @@ gallery.run()
 ## Features
 
 - Browse scripts by date and version
-- Live code editor with section markers (LOAD / PLOT / SAVE)
+- Live code editor with section markers (CONFIGURATOR / CODE / SAVE)
 - Preview plots before saving
 - Data table viewer
 - Pluggable storage backends (`FileSystemBackend` or custom)

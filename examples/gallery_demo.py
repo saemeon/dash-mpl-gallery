@@ -2,7 +2,7 @@
 
 Usage:
     # First generate demo data (uses the old demo_setup):
-    cd packages/corpframe-gallery && python demo_setup.py && cd ../..
+    cd ../corpframe-gallery && python demo_setup.py && cd ../dash-mpl-gallery
 
     # Then run:
     uv run python examples/gallery_demo.py
@@ -11,7 +11,7 @@ Usage:
 from pathlib import Path
 from gallery_viewer import Gallery, FileSystemBackend
 
-DEMO_DIR = Path(__file__).parent.parent / "packages" / "gallery_viewer"
+DEMO_DIR = Path(__file__).resolve().parent.parent
 
 gallery = Gallery(
     backend=FileSystemBackend(DEMO_DIR),
