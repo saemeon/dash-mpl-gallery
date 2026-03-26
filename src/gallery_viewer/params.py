@@ -17,7 +17,7 @@ Two ways to declare configurable parameters in gallery scripts:
     dpi: int = 150
 
 Both approaches produce a ``dict[str, ParamSpec]`` that the Gallery uses
-to auto-generate form fields via dash-fn-forms.
+to auto-generate form fields via dash-fn-form.
 """
 
 from __future__ import annotations
