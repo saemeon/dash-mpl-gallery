@@ -45,15 +45,15 @@ class TestParseTypedAssignments:
         assert "_internal" not in params
 
     def test_skips_untyped_assignments(self):
-        params = parse_typed_assignments('x = 42')
+        params = parse_typed_assignments("x = 42")
         assert len(params) == 0
 
     def test_skips_unsupported_types(self):
-        params = parse_typed_assignments('data: list = []')
+        params = parse_typed_assignments("data: list = []")
         assert len(params) == 0
 
     def test_skips_complex_expressions(self):
-        params = parse_typed_assignments('value: int = 1 + 2')
+        params = parse_typed_assignments("value: int = 1 + 2")
         # BinOp is not a literal, should be skipped
         assert len(params) == 0
 

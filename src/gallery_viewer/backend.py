@@ -98,6 +98,7 @@ class StorageBackend:
 # Default subprocess runner (shared by all backends)
 # ---------------------------------------------------------------------------
 
+
 def _run_sections(
     sections: ScriptSections,
     include_save: bool,
@@ -162,7 +163,10 @@ def _run_sections(
 # FileSystemBackend
 # ---------------------------------------------------------------------------
 
-def _patch_version_in_code(sections: ScriptSections, date: str, version: int) -> ScriptSections:
+
+def _patch_version_in_code(
+    sections: ScriptSections, date: str, version: int
+) -> ScriptSections:
     """Prepend correct ``date`` and ``version`` to the Save section.
 
     The Code section keeps its original date (for data loading).
@@ -334,10 +338,7 @@ class FileSystemBackend(StorageBackend):
 
         data_path = self.data_dir / f"data_{date}.csv"
         return ScriptSections(
-            configurator=(
-                f'title: str = "{date}"\n'
-                'dpi: int = 100'
-            ),
+            configurator=(f'title: str = "{date}"\ndpi: int = 100'),
             code=(
                 "import pandas as pd\n"
                 "import matplotlib\n"

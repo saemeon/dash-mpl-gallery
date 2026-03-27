@@ -39,6 +39,7 @@ def tmp_gallery(tmp_path):
 # ScriptSections
 # ---------------------------------------------------------------------------
 
+
 class TestScriptSections:
     def test_from_text_with_new_markers(self):
         text = '# === CONFIGURATOR ===\ntitle: str = "hi"\n\n# === CODE ===\nprint(title)\n'
@@ -60,7 +61,7 @@ class TestScriptSections:
         assert s.code == "just some code"
 
     def test_roundtrip(self):
-        original = ScriptSections(configurator='x: int = 1', code="print(x)")
+        original = ScriptSections(configurator="x: int = 1", code="print(x)")
         restored = ScriptSections.from_text(original.to_text())
         assert restored.configurator == original.configurator
         assert restored.code == original.code
@@ -69,6 +70,7 @@ class TestScriptSections:
 # ---------------------------------------------------------------------------
 # StorageBackend (base)
 # ---------------------------------------------------------------------------
+
 
 class TestStorageBackendBase:
     def test_defaults_return_empty(self):
@@ -86,6 +88,7 @@ class TestStorageBackendBase:
 # ---------------------------------------------------------------------------
 # FileSystemBackend
 # ---------------------------------------------------------------------------
+
 
 class TestFileSystemBackend:
     def test_list_dates(self, tmp_gallery):
@@ -146,6 +149,7 @@ class TestFileSystemBackend:
             ),
         )
         from datetime import date
+
         today = date.today().strftime("%Y%m%d")
         v = b.save_version(today, sections)
         assert v == "1"
@@ -161,7 +165,9 @@ class TestFileSystemBackend:
 
     def test_custom_starter_template(self, tmp_gallery):
         def my_template(date, base_dir):
-            return ScriptSections(configurator="custom_var: str = 'x'", code="print('custom')")
+            return ScriptSections(
+                configurator="custom_var: str = 'x'", code="print('custom')"
+            )
 
         b = FileSystemBackend(tmp_gallery, starter_template_fn=my_template)
         s = b.load_script("99991231", "1")
@@ -188,6 +194,7 @@ class TestFileSystemBackend:
 # ---------------------------------------------------------------------------
 # Subclassing
 # ---------------------------------------------------------------------------
+
 
 class TestSubclassing:
     def test_override_single_method(self, tmp_gallery):

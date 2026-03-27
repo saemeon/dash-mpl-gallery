@@ -36,6 +36,7 @@ def tmp_gallery(tmp_path):
 # Construction
 # ---------------------------------------------------------------------------
 
+
 class TestGalleryInit:
     def test_default_backend(self):
         """Gallery() with no args falls back to a default FileSystemBackend."""
@@ -75,6 +76,7 @@ class TestGalleryInit:
 
     def test_extra_controls_stored(self):
         from dash import html
+
         ctrl = html.Div("extra")
         g = Gallery(extra_controls=ctrl)
         assert g.extra_controls is ctrl
@@ -98,9 +100,11 @@ class TestGalleryInit:
 # build_app / app property
 # ---------------------------------------------------------------------------
 
+
 class TestBuildApp:
     def test_app_property_returns_dash(self, tmp_gallery):
         import dash
+
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
         assert isinstance(g.app, dash.Dash)
@@ -131,10 +135,12 @@ class TestBuildApp:
             (d / "plots").mkdir()
             (d / "scripts").mkdir()
 
-        g = Gallery(backends={
-            "alpha": FileSystemBackend(tmp_path / "alpha"),
-            "beta": FileSystemBackend(tmp_path / "beta"),
-        })
+        g = Gallery(
+            backends={
+                "alpha": FileSystemBackend(tmp_path / "alpha"),
+                "beta": FileSystemBackend(tmp_path / "beta"),
+            }
+        )
         app = g.app
         assert app is not None
 
@@ -150,6 +156,7 @@ class TestBuildApp:
 # ---------------------------------------------------------------------------
 # Export button presence
 # ---------------------------------------------------------------------------
+
 
 class TestExportButton:
     def test_no_export_btn_without_fn(self, tmp_gallery):
@@ -168,6 +175,7 @@ class TestExportButton:
 # ---------------------------------------------------------------------------
 # from_config
 # ---------------------------------------------------------------------------
+
 
 class TestFromConfig:
     def test_from_config_creates_gallery(self, tmp_path):
@@ -220,6 +228,7 @@ class TestFromConfig:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 class TestGetBackend:
     def test_get_by_name(self, tmp_path):
