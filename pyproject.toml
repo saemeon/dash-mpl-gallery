@@ -74,3 +74,7 @@ target-version = "py310"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "PERF"]
 ignore = ["E203", "E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Gallery scripts call matplotlib.use("Agg") before other imports by design
+"examples/**/scripts/*.py" = ["E402", "I001"]
