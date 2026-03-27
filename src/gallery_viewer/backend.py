@@ -15,6 +15,7 @@ directory layout::
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -79,13 +80,12 @@ class StorageBackend:
     def starter_template(self, date: str) -> ScriptSections:
         """Return a starter script for a new date (override for branding)."""
         return ScriptSections(
-            load=(
+            code=(
                 "import pandas as pd\n"
                 "import matplotlib\n"
                 'matplotlib.use("Agg")\n'
                 "import matplotlib.pyplot as plt\n"
-            ),
-            plot=(
+                "\n"
                 "fig, ax = plt.subplots(figsize=(8, 5))\n"
                 "# ax.plot(...)\n"
                 "plt.tight_layout()"
@@ -105,9 +105,9 @@ def _run_sections(
     cwd: Path | None = None,
 ) -> RunResult:
     """Execute script sections in a subprocess, capturing output and plot."""
-    preview_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)  # noqa: SIM115
-    preview_path = Path(preview_file.name)
-    preview_file.close()
+    _fd, _preview_path_str = tempfile.mkstemp(suffix=".png")
+    os.close(_fd)
+    preview_path = Path(_preview_path_str)
 
     if include_save:
         code = sections.to_full()
@@ -122,12 +122,10 @@ def _run_sections(
     # Write script inside cwd/scripts/ so Path(__file__).parent.parent == cwd
     script_dir = (cwd / "scripts") if cwd else Path(tempfile.gettempdir())
     script_dir.mkdir(parents=True, exist_ok=True)
-    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
-        suffix=".py", mode="w", delete=False, dir=str(script_dir),
-    )
-    tmp.write(code)
-    tmp.close()
-    tmp_path = Path(tmp.name)
+    _fd2, _tmp_path_str = tempfile.mkstemp(suffix=".py", dir=str(script_dir))
+    tmp_path = Path(_tmp_path_str)
+    with os.fdopen(_fd2, "w") as _tmp:
+        _tmp.write(code)
 
     try:
         result = subprocess.run(

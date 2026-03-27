@@ -31,6 +31,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -52,16 +53,15 @@ def save_config(config: dict, path: str | Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Write to temp file first, then rename (atomic on same filesystem)
-    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
-        mode="w", suffix=".json", dir=path.parent, delete=False,
-    )
+    _fd, _tmp_name = tempfile.mkstemp(suffix=".json", dir=path.parent)
+    _tmp_path = Path(_tmp_name)
     try:
-        json.dump(config, tmp, indent=2)
-        tmp.write("\n")
-        tmp.close()
-        Path(tmp.name).replace(path)
+        with os.fdopen(_fd, "w") as _tmp:
+            json.dump(config, _tmp, indent=2)
+            _tmp.write("\n")
+        _tmp_path.replace(path)
     except Exception:
-        Path(tmp.name).unlink(missing_ok=True)
+        _tmp_path.unlink(missing_ok=True)
         raise
 
 

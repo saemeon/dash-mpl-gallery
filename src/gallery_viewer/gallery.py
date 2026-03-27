@@ -44,7 +44,7 @@ from gallery_viewer.params import detect_params
 # ---------------------------------------------------------------------------
 
 try:
-    import dash_ace  # noqa: F401
+    import dash_ace  # noqa: F401  # type: ignore[import-not-found]  # ty:ignore[unresolved-import]
     _HAS_ACE = True
 except ImportError:
     _HAS_ACE = False
@@ -617,7 +617,7 @@ class Gallery:
                 if not b64_data:
                     return dash.no_update
                 raw_bytes = base64.b64decode(b64_data)
-                exported = self.export_fn(raw_bytes)
+                exported = self.export_fn(raw_bytes)  # type: ignore[misc]  # ty:ignore[call-non-callable]
                 return dcc.send_bytes(exported, "exported_chart.png")
 
         # -- Add Plot (only if config file is used) --
@@ -649,16 +649,16 @@ class Gallery:
                             dash.no_update, dash.no_update)
 
                 name = name.strip().replace(" ", "_").lower()
-                config = load_config(self._config_path)
+                config = load_config(self._config_path)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
                 if name in config.get("plots", {}):
                     return (f"Plot '{name}' already exists.",
                             dash.no_update, dash.no_update)
 
                 # Create directory + update config
-                base = self._config_path.parent
+                base = self._config_path.parent  # type: ignore[union-attr]  # ty:ignore[unresolved-attribute]
                 plot_path = base / name
                 add_plot_to_config(config, name, str(plot_path), description=desc or "")
-                save_config(config, self._config_path)
+                save_config(config, self._config_path)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
 
                 # Register new backend
                 self.backends[name] = FileSystemBackend(plot_path)
