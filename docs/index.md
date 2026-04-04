@@ -1,6 +1,6 @@
 # gallery-viewer
 
-Configurable versioned script gallery dashboard for Dash — browse, edit, and execute data visualization scripts with date/version tracking.
+A configurable Dash dashboard for browsing, editing, and executing versioned data visualization scripts. Designed for teams that iterate on report charts.
 
 ## Installation
 
@@ -8,16 +8,26 @@ Configurable versioned script gallery dashboard for Dash — browse, edit, and e
 pip install gallery-viewer
 ```
 
-## API Reference
+For interactive Plotly rendering:
 
-### StorageBackend
+```bash
+pip install gallery-viewer plotly
+```
 
-::: gallery_viewer.StorageBackend
+## Quick start
 
-### FileSystemBackend
+```python
+from gallery_viewer import Gallery, FileSystemBackend
 
-::: gallery_viewer.FileSystemBackend
+# Single plot
+gallery = Gallery(backend=FileSystemBackend("./my_project"))
+gallery.run()
 
-### ScriptSections
+# Multi-plot from config
+gallery = Gallery.from_config("gallery.json")
+gallery.run()
+```
 
-::: gallery_viewer.ScriptSections
+See [Architecture](architecture.md) for how scripts, backends, and the dashboard fit together.
+
+See [Examples](examples.md) for complete working scripts.
