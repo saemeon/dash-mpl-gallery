@@ -5,7 +5,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from gallery_viewer import FileSystemBackend, ScriptSections, StorageBackend
+from gallery_viewer import FileSystemBackend, OutputItem, ScriptSections, StorageBackend
+from gallery_viewer._types import RunResult
 
 
 @pytest.fixture
@@ -72,6 +73,70 @@ class TestScriptSections:
 # ---------------------------------------------------------------------------
 
 
+class TestOutputItem:
+    def test_basic(self):
+        item = OutputItem(mime="image/png", data=b"\x89PNG")
+        assert item.mime == "image/png"
+        assert item.data == b"\x89PNG"
+
+
+class TestRunResult:
+    def test_plot_bytes_from_items(self):
+        items = [
+            OutputItem(mime="text/csv", data=b"x,y\n1,2"),
+            OutputItem(mime="image/png", data=b"\x89PNG fake"),
+        ]
+        result = RunResult(items=items)
+        assert result.plot_bytes == b"\x89PNG fake"
+
+    def test_plot_bytes_none_when_no_images(self):
+        items = [OutputItem(mime="text/csv", data=b"x,y\n1,2")]
+        result = RunResult(items=items)
+        assert result.plot_bytes is None
+
+    def test_plot_bytes_none_when_empty(self):
+        result = RunResult()
+        assert result.plot_bytes is None
+
+    def test_plot_bytes_first_image(self):
+        items = [
+            OutputItem(mime="image/png", data=b"first"),
+            OutputItem(mime="image/png", data=b"second"),
+        ]
+        result = RunResult(items=items)
+        assert result.plot_bytes == b"first"
+
+
+class TestScriptSectionsInjectVars:
+    def test_to_preview_with_inject(self):
+        s = ScriptSections(configurator='title: str = "old"', code="print(title)")
+        code = s.to_preview(inject_vars={"title": "new"})
+        assert "title = 'new'" in code
+        # injected vars come before configurator
+        assert code.index("title = 'new'") < code.index('title: str = "old"')
+
+    def test_to_full_with_inject(self):
+        s = ScriptSections(code="print(x)", save="print('saved')")
+        code = s.to_full(inject_vars={"x": 42})
+        assert "x = 42" in code
+        assert "print('saved')" in code
+
+    def test_to_preview_without_inject(self):
+        s = ScriptSections(code="print('hi')")
+        code = s.to_preview()
+        assert code == "print('hi')"
+
+    def test_inject_bool(self):
+        s = ScriptSections(code="print(flag)")
+        code = s.to_preview(inject_vars={"flag": True})
+        assert "flag = True" in code
+
+    def test_inject_int(self):
+        s = ScriptSections(code="print(n)")
+        code = s.to_preview(inject_vars={"n": 150})
+        assert "n = 150" in code
+
+
 class TestStorageBackendBase:
     def test_defaults_return_empty(self):
         b = StorageBackend()
@@ -95,6 +160,14 @@ class TestFileSystemBackend:
         b = FileSystemBackend(tmp_gallery)
         dates = b.list_dates()
         assert dates == ["20240601", "20240101"]
+
+    def test_list_dates_includes_script_only_dates(self, tmp_gallery):
+        """Dates with scripts but no data files should appear."""
+        script = ScriptSections(code="print('hello')")
+        (tmp_gallery / "scripts" / "script_20241225_v1.py").write_text(script.to_text())
+        b = FileSystemBackend(tmp_gallery)
+        dates = b.list_dates()
+        assert "20241225" in dates
 
     def test_list_versions(self, tmp_gallery):
         b = FileSystemBackend(tmp_gallery)
@@ -144,24 +217,39 @@ class TestFileSystemBackend:
             code=(
                 "import matplotlib\nmatplotlib.use('Agg')\n"
                 "import matplotlib.pyplot as plt\n"
-                "fig, ax = plt.subplots()\nax.plot([1,2,3])\n"
-                "version = 1\ndate = '20240101'"
+                "fig, ax = plt.subplots()\nax.plot([1,2,3])"
             ),
         )
-        from datetime import date
-
-        today = date.today().strftime("%Y%m%d")
-        v = b.save_version(today, sections)
-        assert v == "1"
+        save_date = "20240101"
+        v = b.save_version(save_date, sections)
+        assert v == "3"  # v1 and v2 already exist for 20240101
         # saved script file exists
-        path = tmp_gallery / "scripts" / f"script_{today}_v1.py"
+        path = tmp_gallery / "scripts" / f"script_{save_date}_v3.py"
         assert path.exists()
+        # saved script is clean (no patched date/version lines)
+        script_text = path.read_text()
+        assert script_text.count("date =") == 0  # no injected date
+        assert script_text.count("version =") == 0  # no injected version
         # saved plot file exists
-        plot_path = tmp_gallery / "plots" / f"plot_{today}_v1.png"
+        plot_path = tmp_gallery / "plots" / f"plot_{save_date}_v3.png"
         assert plot_path.exists()
-        # save again → v2
-        v2 = b.save_version(today, sections)
-        assert v2 == "2"
+        # save again → v4
+        v2 = b.save_version(save_date, sections)
+        assert v2 == "4"
+
+    def test_save_version_uses_provided_date(self, tmp_gallery):
+        """Save should use the date passed in, not today's date."""
+        b = FileSystemBackend(tmp_gallery)
+        sections = ScriptSections(
+            code=(
+                "import matplotlib\nmatplotlib.use('Agg')\n"
+                "import matplotlib.pyplot as plt\n"
+                "fig, ax = plt.subplots()\nax.plot([1,2,3])"
+            ),
+        )
+        v = b.save_version("20991231", sections)
+        assert v == "1"
+        assert (tmp_gallery / "scripts" / "script_20991231_v1.py").exists()
 
     def test_custom_starter_template(self, tmp_gallery):
         def my_template(date, base_dir):
@@ -182,6 +270,46 @@ class TestFileSystemBackend:
         assert result.success
         assert result.plot_bytes is not None
         assert result.plot_bytes[:4] == b"\x89PNG"
+
+    def test_run_preview_captures_items(self, tmp_gallery):
+        """run_preview should populate result.items with OutputItem objects."""
+        b = FileSystemBackend(tmp_gallery)
+        sections = ScriptSections(
+            code="import matplotlib\nmatplotlib.use('Agg')\nimport matplotlib.pyplot as plt\nfig, ax = plt.subplots()\nax.plot([1,2,3])",
+        )
+        result = b.run_preview(sections)
+        assert result.success
+        assert len(result.items) >= 1
+        assert result.items[0].mime == "image/png"
+        assert result.items[0].data[:4] == b"\x89PNG"
+
+    def test_run_preview_multiple_figures(self, tmp_gallery):
+        """Multiple matplotlib figures should produce multiple items."""
+        b = FileSystemBackend(tmp_gallery)
+        sections = ScriptSections(
+            code=(
+                "import matplotlib\nmatplotlib.use('Agg')\n"
+                "import matplotlib.pyplot as plt\n"
+                "fig1, ax1 = plt.subplots()\nax1.plot([1,2,3])\n"
+                "fig2, ax2 = plt.subplots()\nax2.bar([1,2,3], [4,5,6])\n"
+            ),
+        )
+        result = b.run_preview(sections)
+        assert result.success
+        png_items = [i for i in result.items if i.mime == "image/png"]
+        assert len(png_items) == 2
+
+    def test_run_preview_dataframe_capture(self, tmp_gallery):
+        """DataFrames should be captured as text/csv items."""
+        b = FileSystemBackend(tmp_gallery)
+        sections = ScriptSections(
+            code="import pandas as pd\nsummary = pd.DataFrame({'a': [1,2], 'b': [3,4]})\n",
+        )
+        result = b.run_preview(sections)
+        assert result.success
+        csv_items = [i for i in result.items if i.mime == "text/csv"]
+        assert len(csv_items) >= 1
+        assert b"a,b" in csv_items[0].data
 
     def test_run_preview_error(self, tmp_gallery):
         b = FileSystemBackend(tmp_gallery)

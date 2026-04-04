@@ -11,12 +11,19 @@ directory layout::
         data/   data_{date}.csv
         plots/  plot_{date}_v{version}.png
         scripts/script_{date}_v{version}.py
+
+Script execution uses a **manifest-based capture** system: after running the
+user's code, an epilogue introspects the namespace for matplotlib figures,
+Plotly figures, and pandas DataFrames.  Each is serialized to a temp directory
+and returned as ``OutputItem`` instances in ``RunResult.items``.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,7 +33,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from gallery_viewer._types import RunResult, ScriptSections
+from gallery_viewer._types import OutputItem, RunResult, ScriptSections
 
 
 class StorageBackend:
@@ -67,13 +74,21 @@ class StorageBackend:
 
     # -- Execution -----------------------------------------------------------
 
-    def run_preview(self, sections: ScriptSections) -> RunResult:
-        """Run Load + Plot, capture a preview image, return result."""
-        return _run_sections(sections, include_save=False)
+    def run_preview(
+        self,
+        sections: ScriptSections,
+        inject_vars: dict[str, object] | None = None,
+    ) -> RunResult:
+        """Run Configurator + Code, capture a preview image, return result."""
+        return _run_sections(sections, include_save=False, inject_vars=inject_vars)
 
-    def run_full(self, sections: ScriptSections) -> RunResult:
-        """Run Load + Plot + Save, return result."""
-        return _run_sections(sections, include_save=True)
+    def run_full(
+        self,
+        sections: ScriptSections,
+        inject_vars: dict[str, object] | None = None,
+    ) -> RunResult:
+        """Run Configurator + Code + Save, return result."""
+        return _run_sections(sections, include_save=True, inject_vars=inject_vars)
 
     # -- Templates -----------------------------------------------------------
 
@@ -90,7 +105,6 @@ class StorageBackend:
                 "# ax.plot(...)\n"
                 "plt.tight_layout()"
             ),
-            save="# plt.savefig(...)",
         )
 
 
@@ -99,33 +113,84 @@ class StorageBackend:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Capture epilogue — appended to every subprocess script
+# ---------------------------------------------------------------------------
+# After the user's CODE (and optionally SAVE) section runs, this epilogue
+# scans the subprocess namespace for recognizable output types:
+#   1. matplotlib figures → saved as PNG
+#   2. plotly.graph_objects.Figure → serialized as JSON
+#   3. pandas DataFrames (non-private) → exported as CSV (first 200 rows)
+# Results are written to a temp directory with a manifest.json that the
+# runner reads back into OutputItem instances.
+_CAPTURE_EPILOGUE = """
+import json as _json, pathlib as _pathlib
+
+_out_dir = _pathlib.Path(r"{out_dir}")
+_out_dir.mkdir(exist_ok=True)
+_manifest = []
+
+# 1. Matplotlib figures
+try:
+    import matplotlib.pyplot as _plt
+    for _i, _fignum in enumerate(_plt.get_fignums()):
+        _fig = _plt.figure(_fignum)
+        _path = _out_dir / f"fig_{{_i}}.png"
+        _fig.savefig(str(_path), dpi=100, bbox_inches="tight")
+        _manifest.append({{"mime": "image/png", "file": _path.name}})
+except ImportError:
+    pass
+
+# 2. Plotly figures
+try:
+    import plotly.graph_objects as _go
+    for _name, _obj in list(locals().items()):
+        if isinstance(_obj, _go.Figure):
+            _path = _out_dir / f"plotly_{{_name}}.json"
+            _path.write_text(_obj.to_json())
+            _manifest.append({{"mime": "application/vnd.plotly+json", "file": _path.name}})
+except ImportError:
+    pass
+
+# 3. Pandas DataFrames (non-private variables)
+try:
+    import pandas as _pd
+    for _name, _obj in list(locals().items()):
+        if isinstance(_obj, _pd.DataFrame) and not _name.startswith("_"):
+            _path = _out_dir / f"df_{{_name}}.csv"
+            _obj.head(200).to_csv(str(_path), index=False)
+            _manifest.append({{"mime": "text/csv", "file": _path.name, "name": _name}})
+except ImportError:
+    pass
+
+(_out_dir / "manifest.json").write_text(_json.dumps(_manifest))
+"""
+
+
 def _run_sections(
     sections: ScriptSections,
     include_save: bool,
     timeout: int = 60,
     cwd: Path | None = None,
+    inject_vars: dict[str, object] | None = None,
 ) -> RunResult:
-    """Execute script sections in a subprocess, capturing output and plot."""
-    _fd, _preview_path_str = tempfile.mkstemp(suffix=".png")
-    os.close(_fd)
-    preview_path = Path(_preview_path_str)
+    """Execute script sections in a subprocess, capturing outputs."""
+    out_dir = Path(tempfile.mkdtemp(prefix="gv_out_"))
 
     if include_save:
-        code = sections.to_full()
+        code = sections.to_full(inject_vars=inject_vars)
     else:
-        code = sections.to_preview()
-        # Auto-save preview (appended after the code)
-        code += (
-            "\n\nimport matplotlib.pyplot as _plt\n"
-            f"_plt.savefig(r'{preview_path}', dpi=100, bbox_inches='tight')\n"
-        )
+        code = sections.to_preview(inject_vars=inject_vars)
+
+    # Append the capture epilogue
+    code += "\n\n" + _CAPTURE_EPILOGUE.format(out_dir=out_dir)
 
     # Write script inside cwd/scripts/ so Path(__file__).parent.parent == cwd
     script_dir = (cwd / "scripts") if cwd else Path(tempfile.gettempdir())
     script_dir.mkdir(parents=True, exist_ok=True)
-    _fd2, _tmp_path_str = tempfile.mkstemp(suffix=".py", dir=str(script_dir))
+    _fd, _tmp_path_str = tempfile.mkstemp(suffix=".py", dir=str(script_dir))
     tmp_path = Path(_tmp_path_str)
-    with os.fdopen(_fd2, "w") as _tmp:
+    with os.fdopen(_fd, "w") as _tmp:
         _tmp.write(code)
 
     try:
@@ -146,15 +211,26 @@ def _run_sections(
     finally:
         tmp_path.unlink(missing_ok=True)
 
-    plot_bytes = None
-    if preview_path.exists():
-        plot_bytes = preview_path.read_bytes()
-        preview_path.unlink(missing_ok=True)
+    # Read captured outputs from manifest
+    items: list[OutputItem] = []
+    manifest_path = out_dir / "manifest.json"
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+            for entry in manifest:
+                file_path = out_dir / entry["file"]
+                if file_path.exists():
+                    items.append(OutputItem(mime=entry["mime"], data=file_path.read_bytes()))
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    # Clean up temp output directory
+    shutil.rmtree(out_dir, ignore_errors=True)
 
     return RunResult(
         output=output.strip(),
         error=error.strip(),
-        plot_bytes=plot_bytes,
+        items=items,
         success=success,
     )
 
@@ -162,25 +238,6 @@ def _run_sections(
 # ---------------------------------------------------------------------------
 # FileSystemBackend
 # ---------------------------------------------------------------------------
-
-
-def _patch_version_in_code(
-    sections: ScriptSections, date: str, version: int
-) -> ScriptSections:
-    """Prepend correct ``date`` and ``version`` to the Save section.
-
-    The Code section keeps its original date (for data loading).
-    The Save section gets fresh assignments so output filenames are correct.
-    """
-    # Prepend overrides at the top of the Save section
-    save_prefix = f'date = "{date}"\nversion = {version}\n'
-    patched_save = save_prefix + sections.save
-
-    return ScriptSections(
-        configurator=sections.configurator,
-        code=sections.code,
-        save=patched_save,
-    )
 
 
 class FileSystemBackend(StorageBackend):
@@ -256,6 +313,11 @@ class FileSystemBackend(StorageBackend):
                 m = self._data_re.match(f.name)
                 if m:
                     dates.add(m.group("date"))
+        if self.scripts_dir.exists():
+            for f in self.scripts_dir.iterdir():
+                m = self._script_re.match(f.name)
+                if m:
+                    dates.add(m.group("date"))
         return sorted(dates, reverse=True)
 
     def list_versions(self, date: str) -> list[str]:
@@ -293,30 +355,34 @@ class FileSystemBackend(StorageBackend):
     def save_version(self, date: str, sections: ScriptSections) -> str:
         self.scripts_dir.mkdir(parents=True, exist_ok=True)
         self.plots_dir.mkdir(parents=True, exist_ok=True)
-        today = _date.today().strftime("%Y%m%d")
+
         existing = []
         if self.scripts_dir.exists():
             for f in self.scripts_dir.iterdir():
                 m = self._script_re.match(f.name)
-                if m and m.group("date") == today:
+                if m and m.group("date") == date:
                     existing.append(int(m.group("version")))
         new_version = max(existing, default=0) + 1
 
-        # Patch version and date in the script code so the save section
-        # writes to the correct output path
-        patched = _patch_version_in_code(sections, today, new_version)
+        # Save the script as-is (clean, no patching)
+        path = self.scripts_dir / f"script_{date}_v{new_version}.py"
+        path.write_text(sections.to_text())
 
-        path = self.scripts_dir / f"script_{today}_v{new_version}.py"
-        path.write_text(patched.to_text())
+        # Inject date/version/paths as execution-time variables
+        plot_path = self.plots_dir / f"plot_{date}_v{new_version}.png"
+        inject = {
+            "date": date,
+            "version": new_version,
+            "BASE_DIR": str(self.base_dir),
+            "PLOT_OUTPUT_PATH": str(plot_path),
+        }
 
-        # Run the script: first try full (which includes user's save code),
-        # then always capture a preview as fallback
-        self.run_full(patched)
+        # Run full (includes user's SAVE section if any)
+        self.run_full(sections, inject_vars=inject)
 
-        plot_path = self.plots_dir / f"plot_{today}_v{new_version}.png"
         if not plot_path.exists():
             # Script didn't save a plot itself — capture preview
-            result = self.run_preview(patched)
+            result = self.run_preview(sections, inject_vars=inject)
             if result.plot_bytes:
                 plot_path.write_bytes(result.plot_bytes)
 
@@ -324,11 +390,23 @@ class FileSystemBackend(StorageBackend):
 
     # -- Execution (override to set cwd) ------------------------------------
 
-    def run_preview(self, sections: ScriptSections) -> RunResult:
-        return _run_sections(sections, include_save=False, cwd=self.base_dir)
+    def run_preview(
+        self,
+        sections: ScriptSections,
+        inject_vars: dict[str, object] | None = None,
+    ) -> RunResult:
+        return _run_sections(
+            sections, include_save=False, cwd=self.base_dir, inject_vars=inject_vars
+        )
 
-    def run_full(self, sections: ScriptSections) -> RunResult:
-        return _run_sections(sections, include_save=True, cwd=self.base_dir)
+    def run_full(
+        self,
+        sections: ScriptSections,
+        inject_vars: dict[str, object] | None = None,
+    ) -> RunResult:
+        return _run_sections(
+            sections, include_save=True, cwd=self.base_dir, inject_vars=inject_vars
+        )
 
     # -- Templates -----------------------------------------------------------
 
@@ -360,10 +438,8 @@ class FileSystemBackend(StorageBackend):
                 "plt.tight_layout()"
             ),
             save=(
-                "version = 1\n"
-                'out = BASE_DIR / "plots" / f"plot_{date}_v{version}.png"\n'
-                "out.parent.mkdir(parents=True, exist_ok=True)\n"
-                "plt.savefig(out, dpi=dpi)\n"
-                'print(f"Saved {out}")'
+                "# The gallery injects: date, version, BASE_DIR, PLOT_OUTPUT_PATH\n"
+                "# Add optional post-processing here (e.g. extra exports).\n"
+                "# The plot image is saved automatically by the gallery."
             ),
         )

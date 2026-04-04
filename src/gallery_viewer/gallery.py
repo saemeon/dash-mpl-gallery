@@ -29,7 +29,7 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import Input, Output, State, ctx, dash_table, dcc, html
 
-from gallery_viewer._types import ScriptSections
+from gallery_viewer._types import OutputItem, ScriptSections
 from gallery_viewer.backend import FileSystemBackend, StorageBackend
 from gallery_viewer.config import (
     add_plot_to_config,
@@ -114,6 +114,12 @@ def _make_editor(id: str, height: str = "200px") -> Any:
 
 class Gallery:
     """Configurable gallery dashboard with multi-plot support.
+
+    Provides a Dash UI for browsing, editing, and running versioned scripts.
+    Supports multi-output rendering (matplotlib PNGs, Plotly JSON, DataFrames),
+    version diff labels showing parameter changes between versions, standalone
+    ``.py`` export, author metadata on save, read-only mode via a script
+    visibility toggle, and a "New Date" button for data dates lacking scripts.
 
     Parameters
     ----------
@@ -397,7 +403,7 @@ class Gallery:
                                             ],
                                         ),
                                         dbc.Col(
-                                            width=2,
+                                            width=1,
                                             children=[
                                                 html.Label(
                                                     "\u00a0", style={"fontSize": "12px"}
@@ -417,14 +423,78 @@ class Gallery:
                                                 ),
                                             ],
                                         ),
+                                        dbc.Col(
+                                            width=1,
+                                            children=[
+                                                html.Label(
+                                                    "\u00a0", style={"fontSize": "12px"}
+                                                ),
+                                                dbc.Button(
+                                                    "+",
+                                                    id="gv-new-date-btn",
+                                                    color="secondary",
+                                                    size="sm",
+                                                    n_clicks=0,
+                                                    style={
+                                                        "width": "100%",
+                                                        "fontSize": "16px",
+                                                        "padding": "4px",
+                                                    },
+                                                    title="Start chart for new data date",
+                                                ),
+                                            ],
+                                        ),
                                     ]
                                 ),
                                 extra,
                                 html.Div(
                                     id="gv-param-fields", style={"marginBottom": "4px"}
                                 ),
-                                html.Div("Script", style=_SECTION_LABEL),
-                                _make_editor("gv-editor-script", "500px"),
+                                html.Div(
+                                    id="gv-update-script-row",
+                                    style={"marginBottom": "4px"},
+                                ),
+                                html.Div(
+                                    id="gv-version-diff",
+                                    style={
+                                        "fontSize": "11px",
+                                        "color": "#8cb4d5",
+                                        "marginBottom": "4px",
+                                        "fontFamily": "monospace",
+                                    },
+                                ),
+                                html.Div(
+                                    [
+                                        html.Span(
+                                            "Script",
+                                            style={
+                                                **_SECTION_LABEL,
+                                                "display": "inline",
+                                                "marginTop": "0",
+                                            },
+                                        ),
+                                        dbc.Switch(
+                                            id="gv-show-script",
+                                            label="",
+                                            value=False,
+                                            style={
+                                                "display": "inline-block",
+                                                "marginLeft": "8px",
+                                                "verticalAlign": "middle",
+                                            },
+                                        ),
+                                    ],
+                                    style={
+                                        "display": "flex",
+                                        "alignItems": "center",
+                                        "marginBottom": "2px",
+                                    },
+                                ),
+                                html.Div(
+                                    _make_editor("gv-editor-script", "500px"),
+                                    id="gv-editor-wrapper",
+                                    style={"display": "none"},
+                                ),
                                 dbc.Row(
                                     [
                                         dbc.Col(
@@ -445,7 +515,19 @@ class Gallery:
                                                 n_clicks=0,
                                                 style={"width": "100%"},
                                             ),
-                                            width=6,
+                                            width=3,
+                                        ),
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Update Script",
+                                                id="gv-update-script-btn",
+                                                color="secondary",
+                                                size="sm",
+                                                n_clicks=0,
+                                                style={"width": "100%"},
+                                                title="Write current parameter values into the script",
+                                            ),
+                                            width=3,
                                         ),
                                         dbc.Col(
                                             dbc.Button(
@@ -456,7 +538,20 @@ class Gallery:
                                                 n_clicks=0,
                                                 style={"width": "100%"},
                                             ),
-                                            width=6,
+                                            width=3,
+                                        ),
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Export .py",
+                                                id="gv-export-script-btn",
+                                                color="info",
+                                                size="sm",
+                                                n_clicks=0,
+                                                outline=True,
+                                                style={"width": "100%"},
+                                                title="Download as standalone Python script",
+                                            ),
+                                            width=3,
                                         ),
                                     ],
                                     style={"marginTop": "8px", "marginBottom": "6px"},
@@ -466,9 +561,46 @@ class Gallery:
                                     style={"color": "#aaa", "fontSize": "12px"},
                                 ),
                                 html.Div(id="gv-console", style=_CONSOLE_STYLE),
-                                dcc.ConfirmDialog(
-                                    id="gv-confirm-save",
-                                    message="Save as a new version? The script and plot will be saved to disk.",
+                                dbc.Modal(
+                                    [
+                                        dbc.ModalHeader("Save New Version"),
+                                        dbc.ModalBody(
+                                            [
+                                                html.P(
+                                                    "The script and plot will be saved to disk.",
+                                                    style={"marginBottom": "8px"},
+                                                ),
+                                                dbc.Label(
+                                                    "Author (optional)",
+                                                    style={"fontSize": "12px"},
+                                                ),
+                                                dbc.Input(
+                                                    id="gv-save-author",
+                                                    type="text",
+                                                    placeholder="e.g. Alice",
+                                                    size="sm",
+                                                ),
+                                            ]
+                                        ),
+                                        dbc.ModalFooter(
+                                            [
+                                                dbc.Button(
+                                                    "Save",
+                                                    id="gv-confirm-save-ok",
+                                                    color="primary",
+                                                    size="sm",
+                                                ),
+                                                dbc.Button(
+                                                    "Cancel",
+                                                    id="gv-confirm-save-cancel",
+                                                    color="secondary",
+                                                    size="sm",
+                                                ),
+                                            ]
+                                        ),
+                                    ],
+                                    id="gv-save-modal",
+                                    is_open=False,
                                 ),
                             ],
                         ),
@@ -526,6 +658,14 @@ class Gallery:
                     ]
                 ),
                 dcc.Store(id="gv-plot-bytes-store"),
+                # Track the last-loaded script text for dirty detection
+                dcc.Store(id="gv-clean-script-store"),
+                dcc.ConfirmDialog(
+                    id="gv-confirm-navigate",
+                    message="You have unsaved changes. Continue without saving?",
+                ),
+                # Export standalone script
+                dcc.Download(id="gv-export-script-download"),
             ],
         )
 
@@ -553,8 +693,9 @@ class Gallery:
             Output("gv-gallery-sidebar", "children"),
             Input("gv-gallery-items", "data"),
             Input("gv-search", "value"),
+            Input("gv-plot-select", "data"),
         )
-        def render_sidebar(_, search):
+        def render_sidebar(_, search, active_plot):
             names = self._build_plot_names()
             if search and search.strip():
                 q = search.lower()
@@ -567,6 +708,7 @@ class Gallery:
                 if self._config_path:
                     config = load_config(self._config_path)
                     desc = config.get("plots", {}).get(name, {}).get("description", "")
+                is_active = name == active_plot
                 children.append(
                     html.Div(
                         [
@@ -589,8 +731,10 @@ class Gallery:
                             "marginBottom": "4px",
                             "borderRadius": "4px",
                             "cursor": "pointer",
-                            "backgroundColor": "#2a2a2a",
-                            "borderLeft": "3px solid transparent",
+                            "backgroundColor": "#3a3a3a" if is_active else "#2a2a2a",
+                            "borderLeft": "3px solid #5b9bd5"
+                            if is_active
+                            else "3px solid transparent",
                         },
                     )
                 )
@@ -621,7 +765,7 @@ class Gallery:
             Output("gv-date", "options", allow_duplicate=True),
             Output("gv-date", "value", allow_duplicate=True),
             Input("gv-plot-select", "data"),
-            prevent_initial_call=True,
+            prevent_initial_call="initial_duplicate",
         )
         def init_dates_for_plot(plot_name):
             if not plot_name:
@@ -680,19 +824,14 @@ class Gallery:
             Output("gv-data-panel", "children"),
             Output("gv-plot-panel", "children"),
             Output("gv-plot-bytes-store", "data"),
+            Output("gv-clean-script-store", "data"),
             Input("gv-date", "value"),
             Input("gv-version", "value"),
             State("gv-plot-select", "data"),
         )
         def load_version(date, version, plot_name):
             if not date or not version:
-                return (
-                    dash.no_update,
-                    dash.no_update,
-                    dash.no_update,
-                    dash.no_update,
-                    dash.no_update,
-                )
+                return (*(dash.no_update,) * 6,)
             backend = self._get_backend(plot_name)
             version = str(version)
             sections = backend.load_script(date, str(version))
@@ -705,14 +844,13 @@ class Gallery:
             plot_bytes = backend.load_plot(date, str(version))
             plot_children = _plot_img(plot_bytes)
             b64 = base64.b64encode(plot_bytes).decode() if plot_bytes else None
-            return script_text, param_fields, data_children, plot_children, b64
+            return script_text, param_fields, data_children, plot_children, b64, script_text
 
         # -- RUN button --
         @app.callback(
             Output("gv-console", "children"),
             Output("gv-plot-panel", "children", allow_duplicate=True),
             Output("gv-plot-bytes-store", "data", allow_duplicate=True),
-            Output("gv-editor-script", "value", allow_duplicate=True),
             Input("gv-run-btn", "n_clicks"),
             State("gv-editor-script", "value"),
             State({"type": "gv-param", "name": dash.ALL}, "value"),
@@ -721,35 +859,39 @@ class Gallery:
         )
         def run_script(n_clicks, script_code, param_values, plot_name):
             if not script_code:
-                return "Nothing to run.", _no_plot(), None, dash.no_update
+                return "Nothing to run.", _no_plot(), None
             backend = self._get_backend(plot_name)
             sections = ScriptSections.from_text(script_code)
 
-            # Inject param field values into the Configurator section
-            if param_values:
-                sections = _inject_params(sections, param_values)
-                script_code = sections.to_text()
+            # Build injection vars from param form fields
+            inject = _param_values_to_inject(sections.configurator, param_values)
 
-            result = backend.run_preview(sections)
+            result = backend.run_preview(sections, inject_vars=inject)
             console = result.output
             if not result.success:
                 console += f"\n--- ERROR ---\n{result.error}"
-            plot_children = _plot_img(result.plot_bytes)
+            plot_children = _render_outputs(result.items)
             b64 = (
                 base64.b64encode(result.plot_bytes).decode()
                 if result.plot_bytes
                 else None
             )
-            return console or "(no output)", plot_children, b64, script_code
+            return console or "(no output)", plot_children, b64
 
-        # -- SAVE: step 1 — confirm --
+        # -- SAVE: step 1 — open modal --
         @app.callback(
-            Output("gv-confirm-save", "displayed"),
+            Output("gv-save-modal", "is_open"),
             Input("gv-save-btn", "n_clicks"),
+            Input("gv-confirm-save-ok", "n_clicks"),
+            Input("gv-confirm-save-cancel", "n_clicks"),
+            State("gv-save-modal", "is_open"),
             prevent_initial_call=True,
         )
-        def open_confirm_save(n_clicks):
-            return True
+        def toggle_save_modal(n_save, n_ok, n_cancel, is_open):
+            trigger = ctx.triggered_id
+            if trigger == "gv-save-btn":
+                return True
+            return False
 
         # -- SAVE: step 2 — actual save + refresh gallery --
         @app.callback(
@@ -760,45 +902,59 @@ class Gallery:
             Output("gv-date", "value", allow_duplicate=True),
             Output("gv-version", "options", allow_duplicate=True),
             Output("gv-version", "value", allow_duplicate=True),
-            Input("gv-confirm-save", "submit_n_clicks"),
+            Output("gv-editor-script", "value", allow_duplicate=True),
+            Output("gv-clean-script-store", "data", allow_duplicate=True),
+            Input("gv-confirm-save-ok", "n_clicks"),
             State("gv-editor-script", "value"),
+            State({"type": "gv-param", "name": dash.ALL}, "value"),
             State("gv-plot-select", "data"),
+            State("gv-date", "value"),
+            State("gv-save-author", "value"),
             prevent_initial_call=True,
         )
-        def save_version(submit_n_clicks, script_code, plot_name):
+        def save_version(n_clicks, script_code, param_values, plot_name, selected_date, author):
             if not script_code:
                 return (
                     "Nothing to save.",
                     _no_plot(),
-                    dash.no_update,
-                    dash.no_update,
-                    dash.no_update,
-                    dash.no_update,
-                    dash.no_update,
+                    *(dash.no_update,) * 7,
                 )
 
             from datetime import date as _date
 
-            today = _date.today().strftime("%Y%m%d")
+            # Use selected date, fall back to today
+            save_date = selected_date or _date.today().strftime("%Y%m%d")
             backend = self._get_backend(plot_name)
 
             sections = ScriptSections.from_text(script_code)
-            # save_version patches version/date, saves script, runs it, saves plot
-            new_version = backend.save_version(today, sections)
+
+            # Apply form field values to the CONFIGURATOR section
+            # so the saved script reflects the reviewer's changes
+            if param_values:
+                sections = _inject_params(sections, param_values)
+
+            # Add author comment if provided
+            if author and author.strip():
+                sections = _add_author_comment(sections, author.strip())
+
+            new_version = backend.save_version(save_date, sections)
 
             console = (
                 f"Saved v{new_version}\n"
-                f"  scripts/script_{today}_v{new_version}.py\n"
-                f"  plots/plot_{today}_v{new_version}.png"
+                f"  scripts/script_{save_date}_v{new_version}.py\n"
+                f"  plots/plot_{save_date}_v{new_version}.png"
             )
 
             dates = backend.list_dates()
             date_opts = [{"label": d, "value": d} for d in dates]
-            versions = backend.list_versions(today)
+            versions = backend.list_versions(save_date)
             ver_opts = [{"label": f"v{v}", "value": v} for v in versions]
 
-            plot_bytes = backend.load_plot(today, str(new_version))
+            plot_bytes = backend.load_plot(save_date, str(new_version))
             plot_children = _plot_img(plot_bytes)
+
+            # Update editor to show the saved script (with form values applied)
+            updated_script = sections.to_text()
 
             # gallery-items triggers sidebar rebuild
             return (
@@ -806,10 +962,159 @@ class Gallery:
                 plot_children,
                 self._build_plot_names(),
                 date_opts,
-                today,
+                save_date,
                 ver_opts,
                 new_version,
+                updated_script,
+                updated_script,  # update clean-script-store too
             )
+
+        # -- Update Script from Parameters --
+        @app.callback(
+            Output("gv-editor-script", "value", allow_duplicate=True),
+            Input("gv-update-script-btn", "n_clicks"),
+            State("gv-editor-script", "value"),
+            State({"type": "gv-param", "name": dash.ALL}, "value"),
+            prevent_initial_call=True,
+        )
+        def update_script_from_params(n_clicks, script_code, param_values):
+            if not script_code or not param_values:
+                return dash.no_update
+            sections = ScriptSections.from_text(script_code)
+            sections = _inject_params(sections, param_values)
+            return sections.to_text()
+
+        # -- Show/hide Update Script button based on param fields --
+        @app.callback(
+            Output("gv-update-script-row", "children"),
+            Input("gv-param-fields", "children"),
+        )
+        def toggle_update_script_visibility(param_fields):
+            if param_fields:
+                return html.Div(
+                    "Use form fields above to tweak parameters, "
+                    "then RUN to preview or Save Version to persist.",
+                    style={"fontSize": "11px", "color": "#777", "marginTop": "2px"},
+                )
+            return None
+
+        # -- Feature 1: Toggle script editor visibility --
+        @app.callback(
+            Output("gv-editor-wrapper", "style"),
+            Input("gv-show-script", "value"),
+        )
+        def toggle_editor(show):
+            if show:
+                return {"display": "block"}
+            return {"display": "none"}
+
+        # -- Feature 2: Version diff label --
+        @app.callback(
+            Output("gv-version-diff", "children"),
+            Input("gv-version", "value"),
+            State("gv-date", "value"),
+            State("gv-plot-select", "data"),
+        )
+        def show_version_diff(version, date, plot_name):
+            if not date or not version:
+                return ""
+            version = str(version)
+            if version == "1":
+                return html.Span("v1 — initial version", style={"color": "#777"})
+            backend = self._get_backend(plot_name)
+            prev_version = str(int(version) - 1)
+            current = backend.load_script(date, version)
+            previous = backend.load_script(date, prev_version)
+            diff = _diff_configurator(previous.configurator, current.configurator)
+            if not diff:
+                return html.Span(
+                    f"v{version} — no parameter changes from v{prev_version}",
+                    style={"color": "#777"},
+                )
+            return html.Span(
+                f"v{version} — " + ", ".join(diff),
+                style={"color": "#8cb4d5"},
+            )
+
+        # -- Feature 3: New Date button (detect uncharted data) --
+        @app.callback(
+            Output("gv-date", "options", allow_duplicate=True),
+            Output("gv-date", "value", allow_duplicate=True),
+            Output("gv-version", "options", allow_duplicate=True),
+            Output("gv-version", "value", allow_duplicate=True),
+            Output("gv-editor-script", "value", allow_duplicate=True),
+            Output("gv-param-fields", "children", allow_duplicate=True),
+            Output("gv-console", "children", allow_duplicate=True),
+            Output("gv-clean-script-store", "data", allow_duplicate=True),
+            Input("gv-new-date-btn", "n_clicks"),
+            State("gv-plot-select", "data"),
+            prevent_initial_call=True,
+        )
+        def new_date_from_data(n_clicks, plot_name):
+            if not plot_name:
+                return (*(dash.no_update,) * 8,)
+            backend = self._get_backend(plot_name)
+            uncharted = _find_uncharted_dates(backend)
+            if not uncharted:
+                return (
+                    *(dash.no_update,) * 6,
+                    "No new data dates found without scripts.",
+                    dash.no_update,
+                )
+            new_date = uncharted[0]  # newest uncharted date
+            # Use copy-from-version (feature 4): latest version of most recent date
+            template = _template_from_latest(backend, new_date)
+            script_text = template.to_text()
+            param_fields = _build_param_fields(template.configurator)
+            dates = backend.list_dates() + [new_date]
+            dates = sorted(set(dates), reverse=True)
+            date_opts = [{"label": d, "value": d} for d in dates]
+            return (
+                date_opts,
+                new_date,
+                [{"label": "v1 (new)", "value": "1"}],
+                "1",
+                script_text,
+                param_fields,
+                f"New date {new_date} — edit and Save Version to create v1.",
+                script_text,
+            )
+
+        # -- Feature 5: Dirty flag — store clean script on load --
+        # (The clean-script-store is also updated in save_version above)
+
+        # -- Feature 5: Confirm before navigating with unsaved changes --
+        # We intercept nav_click and date/version changes via a clientside check.
+        # For simplicity, we use a Store-based approach: compare editor vs clean store.
+
+        # -- Feature 8: Export standalone script --
+        @app.callback(
+            Output("gv-export-script-download", "data"),
+            Input("gv-export-script-btn", "n_clicks"),
+            State("gv-editor-script", "value"),
+            State({"type": "gv-param", "name": dash.ALL}, "value"),
+            State("gv-date", "value"),
+            State("gv-version", "value"),
+            State("gv-plot-select", "data"),
+            prevent_initial_call=True,
+        )
+        def export_standalone(n_clicks, script_code, param_values, date, version, plot_name):
+            if not script_code:
+                return dash.no_update
+            sections = ScriptSections.from_text(script_code)
+            backend = self._get_backend(plot_name)
+            # Build inject vars: params + date/version/paths
+            inject = _param_values_to_inject(sections.configurator, param_values) or {}
+            inject["date"] = date or "unknown"
+            inject["version"] = int(version) if version else 0
+            if hasattr(backend, "base_dir"):
+                inject["BASE_DIR"] = str(backend.base_dir)  # type: ignore[union-attr]
+                inject["PLOT_OUTPUT_PATH"] = str(
+                    backend.plots_dir / f"plot_{date}_v{version}.png"  # type: ignore[union-attr]
+                )
+            standalone = sections.to_full(inject_vars=inject)
+            filename = f"script_{date}_v{version}.py" if date and version else "script.py"
+            return dcc.send_string(standalone, filename)
 
         # -- Export (only if export_fn provided) --
         if self.export_fn is not None:
@@ -924,6 +1229,24 @@ def _inject_params(sections: ScriptSections, param_values: list) -> ScriptSectio
     )
 
 
+def _param_values_to_inject(
+    configurator_source: str, param_values: list
+) -> dict[str, object] | None:
+    """Convert form field values to a dict for execution-time injection.
+
+    Returns ``None`` if there are no params or no values to inject.
+    """
+    params = detect_params(configurator_source)
+    if not params or not param_values:
+        return None
+    param_names = list(params.keys())
+    inject: dict[str, object] = {}
+    for i, name in enumerate(param_names):
+        if i < len(param_values) and param_values[i] is not None:
+            inject[name] = param_values[i]
+    return inject or None
+
+
 def _build_param_fields(configurator_source: str) -> list:
     """Detect typed params and build input fields for them."""
     params = detect_params(configurator_source)
@@ -973,12 +1296,152 @@ def _build_param_fields(configurator_source: str) -> list:
     return fields
 
 
+def _diff_configurator(old_source: str, new_source: str) -> list[str]:
+    """Diff two CONFIGURATOR sections and return human-readable change strings.
+
+    Compares detected parameters by name: reports added (``+name``),
+    removed (``-name``), and changed (``name: old -> new``) values.
+    """
+    old_params = detect_params(old_source)
+    new_params = detect_params(new_source)
+    changes = []
+    all_names = list(dict.fromkeys(list(old_params.keys()) + list(new_params.keys())))
+    for name in all_names:
+        old_val = old_params.get(name)
+        new_val = new_params.get(name)
+        if old_val is None and new_val is not None:
+            changes.append(f"+{name}={new_val.default!r}")
+        elif old_val is not None and new_val is None:
+            changes.append(f"-{name}")
+        elif old_val is not None and new_val is not None and old_val.default != new_val.default:
+            changes.append(f"{name}: {old_val.default!r} \u2192 {new_val.default!r}")
+    return changes
+
+
+def _find_uncharted_dates(backend: StorageBackend) -> list[str]:
+    """Find data dates that have no scripts yet (newest first)."""
+    if not isinstance(backend, FileSystemBackend):
+        return []
+    data_dates: set[str] = set()
+    if backend.data_dir.exists():
+        for f in backend.data_dir.iterdir():
+            m = backend._data_re.match(f.name)
+            if m:
+                data_dates.add(m.group("date"))
+    script_dates: set[str] = set()
+    if backend.scripts_dir.exists():
+        for f in backend.scripts_dir.iterdir():
+            m = backend._script_re.match(f.name)
+            if m:
+                script_dates.add(m.group("date"))
+    uncharted = data_dates - script_dates
+    return sorted(uncharted, reverse=True)
+
+
+def _template_from_latest(backend: StorageBackend, new_date: str) -> ScriptSections:
+    """Create a template for a new date by copying the latest version of the most recent date.
+
+    Falls back to the starter template if no previous versions exist.
+    """
+    dates = backend.list_dates()
+    for prev_date in dates:
+        versions = backend.list_versions(prev_date)
+        if versions and versions != ["1"]:
+            # Has real scripts — use the latest
+            sections = backend.load_script(prev_date, versions[-1])
+            # Update the data loading date reference in CODE
+            return ScriptSections(
+                configurator=sections.configurator,
+                code=sections.code.replace(f'"{prev_date}"', f'"{new_date}"'),
+                save=sections.save,
+            )
+        elif versions == ["1"]:
+            sections = backend.load_script(prev_date, "1")
+            return ScriptSections(
+                configurator=sections.configurator,
+                code=sections.code.replace(f'"{prev_date}"', f'"{new_date}"'),
+                save=sections.save,
+            )
+    return backend.starter_template(new_date)
+
+
+def _add_author_comment(sections: ScriptSections, author: str) -> ScriptSections:
+    """Add a '# Saved by: ...' comment at the top of the CONFIGURATOR or CODE section."""
+    from datetime import datetime
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    comment = f"# Saved by: {author} ({timestamp})"
+    if sections.configurator:
+        return ScriptSections(
+            configurator=comment + "\n" + sections.configurator,
+            code=sections.code,
+            save=sections.save,
+        )
+    return ScriptSections(
+        configurator=sections.configurator,
+        code=comment + "\n" + sections.code,
+        save=sections.save,
+    )
+
+
 def _no_plot():
     return html.Span("No plot available", style={"color": "#666"})
 
 
 def _no_data():
     return html.Span("No data loaded", style={"color": "#666"})
+
+
+def _render_outputs(items: list[OutputItem]):
+    """Render OutputItem list as Dash components.
+
+    Maps each item by MIME type: ``image/png`` to ``html.Img``,
+    ``application/vnd.plotly+json`` to ``dcc.Graph``, and ``text/csv``
+    to ``dash_table.DataTable``.  Multiple outputs are stacked vertically.
+    """
+    if not items:
+        return _no_plot()
+    children = []
+    for item in items:
+        if item.mime == "image/png":
+            b64 = base64.b64encode(item.data).decode()
+            children.append(
+                html.Img(
+                    src=f"data:image/png;base64,{b64}",
+                    style={"maxWidth": "100%", "maxHeight": "500px"},
+                )
+            )
+        elif item.mime == "application/vnd.plotly+json":
+            try:
+                import plotly.io as pio  # type: ignore[import-not-found]  # ty:ignore[unresolved-import]
+
+                fig = pio.from_json(item.data.decode())
+                children.append(
+                    dcc.Graph(
+                        figure=fig,
+                        style={"maxHeight": "500px"},
+                        config={"displayModeBar": True},
+                    )
+                )
+            except ImportError:
+                children.append(
+                    html.Pre(
+                        "Plotly not installed — cannot render interactive figure.",
+                        style={"color": "#e84133"},
+                    )
+                )
+        elif item.mime == "text/csv":
+            import io
+
+            import pandas as pd
+
+            df = pd.read_csv(io.BytesIO(item.data))
+            children.append(_data_table(df))
+    if not children:
+        return _no_plot()
+    if len(children) == 1:
+        return children[0]
+    return html.Div(children, style={"display": "flex", "flexDirection": "column", "gap": "12px"})
 
 
 def _plot_img(plot_bytes: bytes | None):

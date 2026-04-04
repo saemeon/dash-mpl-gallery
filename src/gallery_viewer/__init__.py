@@ -1,6 +1,6 @@
 """gallery-viewer — configurable versioned script gallery for Dash."""
 
-from gallery_viewer._types import RunResult, ScriptSections
+from gallery_viewer._types import OutputItem, RunResult, ScriptSections
 from gallery_viewer.backend import FileSystemBackend, StorageBackend
 from gallery_viewer.config import load_config, save_config
 from gallery_viewer.gallery import Gallery
@@ -17,6 +17,7 @@ __all__ = [
     "FileSystemBackend",
     "ScriptSections",
     "RunResult",
+    "OutputItem",
     "ParamSpec",
     "gallery_param",
     "detect_params",
