@@ -9,7 +9,12 @@ repo_name: saemeon/dash-mpl-gallery
 copyright: "Copyright &copy; 2026 Simon Niederberger"
 
 nav:
-  - gallery-viewer: "index.md"
+  - Home: "index.md"
+  - Architecture: "architecture.md"
+  - Parameters: "parameters.md"
+  - Examples: "examples.md"
+  - Custom backends: "backends.md"
+  - API Reference: "api.md"
 
 theme:
   name: material

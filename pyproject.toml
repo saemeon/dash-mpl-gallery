@@ -2,7 +2,7 @@
 name = "gallery-viewer"
 dynamic = ["version"]
 description = "Configurable versioned script gallery dashboard for Dash — browse, edit, and execute data visualization scripts"
-keywords = ["dash", "gallery", "viewer", "matplotlib", "versioning"]
+keywords = ["dash", "gallery", "viewer", "matplotlib", "plotly", "versioning", "dataviz"]
 classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

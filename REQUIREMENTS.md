@@ -4,6 +4,8 @@
 
 A generic, configurable dashboard for browsing, editing, and running versioned data visualization scripts. Built on Dash, designed so that any company can wrap it with their own corporate design and storage backend.
 
+Supports multiple output types (matplotlib, Plotly, DataFrames) from a single script, auto-detected at runtime.
+
 ## How it fits in the ecosystem
 
 ```
@@ -15,26 +17,28 @@ gallery-viewer (generic engine)
     |
     |-- depends on --> dash, dash-bootstrap-components, pandas
     |-- optional ----> dash-ace (syntax highlighting)
+    |-- optional ----> plotly (interactive chart rendering)
 ```
 
-The gallery-viewer does NOT know about corporate design, capture pipelines, or Shiny. It only knows about backends, scripts, and plots.
+The gallery-viewer does NOT know about corporate design, capture pipelines, or Shiny. It only knows about backends, scripts, and outputs.
 
 ## Core concepts
 
 - **Plot**: A named collection of versioned scripts, data files, and output images.
 - **Backend**: Pluggable storage layer (filesystem, S3, database, git...).
-- **Script**: A Python file with two sections — Configurator (typed parameters) and Code (the actual logic).
+- **Script**: A Python file with three sections — Configurator (typed parameters), Code (the logic), Save (optional post-processing).
+- **Output**: Anything the script produces — matplotlib figures (PNG), Plotly figures (interactive), DataFrames (tables). Auto-detected by the capture epilogue.
 - **gallery.json**: Config file listing available plots. The dashboard reads and writes it.
 
 ## User stories
 
-### Data analyst
+### Chart reviewer
 
-> As a data analyst, I want to open a dashboard, select a plot from the sidebar, tweak parameters (title, DPI, date range) via form fields, click RUN, and see the result immediately — without editing Python code.
+> As a reviewer, I want to open the dashboard, see the latest chart, tweak the title via a form field, hit RUN to preview, and Save Version — without editing Python code or understanding file paths.
 
-### Data scientist
+### Chart author
 
-> As a data scientist, I want to write a matplotlib script, save it as a new version, and have it appear in the gallery alongside previous versions — so I can compare outputs over time.
+> As the script maintainer, I want to write a matplotlib or Plotly script, expose configurable parameters via typed assignments, and have the gallery auto-generate form fields and render outputs — for any combination of figures, tables, and text.
 
 ### Team lead
 
@@ -57,18 +61,20 @@ dpi: int = 150
 show_target: bool = True
 
 # === CODE ===
-import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from pathlib import Path
 
-BASE_DIR = Path(__file__).parent.parent
-# ... load data, make plot, save ...
+fig, ax = plt.subplots()
+ax.plot(df["x"], df["y"])
+ax.set_title(title)
+
+# === SAVE ===
+# Optional post-processing. The gallery handles plot saving automatically.
+# Gallery injects: date, version, BASE_DIR, PLOT_OUTPUT_PATH
 ```
 
-- **Configurator section**: Typed variable assignments. The gallery detects these and renders form fields. Editing a field updates the variable in the script before execution.
-- **Code section**: Everything else — imports, data loading, plotting, saving. Runs as a single Python subprocess.
+- **Configurator**: Typed variable assignments rendered as form fields.
+- **Code**: Main logic — produces figures, DataFrames, etc. Multiple outputs supported.
+- **Save**: Runs only on "Save Version". For optional post-processing.
 
 ## Functional requirements
 
@@ -76,11 +82,11 @@ BASE_DIR = Path(__file__).parent.parent
 |---|---|---|
 | F1 | Browse multiple named plots in a sidebar | Done |
 | F2 | Select date and version for each plot | Done |
-| F3 | View the plot image and data table | Done |
+| F3 | View plot images and data tables | Done |
 | F4 | Edit the script in a syntax-highlighted editor | Done (dash-ace) |
 | F5 | Detect typed parameters and render form fields | Done |
 | F6 | Run the script and show live preview | Done |
-| F7 | Save as a new version (with confirmation) | Done |
+| F7 | Save as a new version (with confirmation + author) | Done |
 | F8 | Refresh dates/versions from disk | Done |
 | F9 | Search/filter plots by name | Done |
 | F10 | Add new plots from the dashboard | Done (with gallery.json) |
@@ -88,6 +94,15 @@ BASE_DIR = Path(__file__).parent.parent
 | F12 | JSON config file (read + write) | Done |
 | F13 | Auto-discover plots from directory structure | Done |
 | F14 | Optional export button (post-process with corpframe) | Done |
+| F15 | Multi-output support (matplotlib, Plotly, DataFrames) | Done |
+| F16 | Version diff labels (parameter changes between versions) | Done |
+| F17 | Read-only mode (hide script editor) | Done |
+| F18 | Export standalone .py script | Done |
+| F19 | Author metadata on save | Done |
+| F20 | New Date button (detect uncharted data dates) | Done |
+| F21 | Copy from latest version when creating new date | Done |
+| F22 | RUN does not modify editor (injection at execution time) | Done |
+| F23 | Save uses selected date, not today | Done |
 
 ## Non-functional requirements
 
@@ -98,16 +113,16 @@ BASE_DIR = Path(__file__).parent.parent
 | N3 | Scripts execute in isolated subprocesses (60s timeout) | Done |
 | N4 | Config file writes are atomic (temp + rename) | Done |
 | N5 | Backwards-compatible with old 3-section scripts (LOAD/PLOT/SAVE) | Done |
+| N6 | Plotly is optional (works without it installed) | Done |
 
 ## Future / backlog
 
 | # | Item |
 |---|---|
-| B1 | Diff view between versions |
-| B2 | Two-way binding: editing param fields auto-updates script AND vice versa |
-| B3 | Delete plot / delete version from the dashboard |
-| B4 | Authentication / access control |
-| B5 | Quarto / RMarkdown integration |
-| B6 | Git-backed storage backend |
-| B7 | Scheduled script execution (cron-like) |
-| B8 | Thumbnail previews in sidebar |
+| B1 | Two-way binding: editing param fields auto-updates script AND vice versa |
+| B2 | Delete plot / delete version from the dashboard |
+| B3 | Authentication / access control |
+| B4 | Git-backed storage backend |
+| B5 | Scheduled script execution (cron-like) |
+| B6 | Thumbnail previews in sidebar |
+| B7 | Dirty-flag navigation warning (clientside JS) |

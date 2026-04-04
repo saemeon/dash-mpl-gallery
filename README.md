@@ -9,7 +9,7 @@
 
 # gallery-viewer
 
-Configurable versioned script gallery dashboard for Dash — browse, edit, and execute data visualization scripts with date/version tracking.
+A configurable Dash dashboard for browsing, editing, and executing versioned data visualization scripts. Designed for teams that iterate on report charts — one person writes the script, reviewers tweak parameters and save new versions.
 
 ## Installation
 
@@ -17,36 +17,102 @@ Configurable versioned script gallery dashboard for Dash — browse, edit, and e
 pip install gallery-viewer
 ```
 
-## Usage
+## Quick start
 
 ```python
 from gallery_viewer import Gallery, FileSystemBackend
 
-backend = FileSystemBackend(base_dir="./my_project")
-gallery = Gallery(backend=backend, title="My Gallery")
+# Single plot
+gallery = Gallery(backend=FileSystemBackend("./my_project"))
+gallery.run()
+
+# Multi-plot from config
+gallery = Gallery.from_config("gallery.json")
 gallery.run()
 ```
 
+## How it works
+
+Scripts are split into three sections:
+
+```python
+# === CONFIGURATOR ===
+title: str = "Q4 Revenue"       # rendered as a text field
+show_target: bool = True         # rendered as a checkbox
+dpi: int = 150                   # rendered as a number input
+
+# === CODE ===
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.plot(df["x"], df["y"])
+ax.set_title(title)
+
+# === SAVE ===
+# Optional post-processing (gallery handles plot saving automatically)
+```
+
+- **CONFIGURATOR** — typed variable assignments auto-generate form fields. Reviewers change these without touching code.
+- **CODE** — the main script. Produces matplotlib figures, Plotly figures, DataFrames, or any combination.
+- **SAVE** — runs only on "Save Version". For optional post-processing (extra exports, prints).
+
+## Multi-output support
+
+The gallery auto-detects what your script produces:
+
+| Output type | Detection | Rendering |
+|------------|-----------|-----------|
+| matplotlib figure | Any open `plt` figure | PNG image |
+| Plotly figure | `plotly.graph_objects.Figure` in namespace | Interactive `dcc.Graph` |
+| pandas DataFrame | Non-private DataFrame variables | Data table |
+
+Multiple outputs render stacked in the preview panel. A script can produce two charts and a summary table — all from one CODE section.
+
 ## Features
 
-- Browse scripts by date and version
-- Live code editor with section markers (CONFIGURATOR / CODE / SAVE)
-- Preview plots before saving
-- Data table viewer
-- Pluggable storage backends (`FileSystemBackend` or custom)
-- Optional export function for post-processing (e.g. corporate framing)
+- **Date/version tracking** — scripts organized as `script_{date}_v{version}.py`
+- **Parameter form fields** — CONFIGURATOR section auto-generates UI controls
+- **RUN preview** — execute without saving, form values injected at runtime
+- **Save Version** — creates next version for the selected date, clean script on disk
+- **Version diff labels** — one-line summary of what changed from the previous version
+- **Read-only mode** — toggle to hide the code editor (reviewers see only form fields + plot)
+- **Export .py** — download as standalone script with all variables hardcoded
+- **Author metadata** — optional name saved as comment in the script
+- **New Date button** — detect uncharted data dates, pre-populate from latest version
+- **Multi-plot galleries** — sidebar navigation with search/filter, backed by `gallery.json`
+- **Pluggable backends** — `FileSystemBackend` or subclass `StorageBackend` for custom storage
 
 ## File structure
 
 ```
 my_project/
-├── data/
-│   └── data_20260101.csv
-├── scripts/
-│   ├── script_20260101_v1.py
-│   └── script_20260101_v2.py
-└── plots/
-    └── plot_20260101_v1.png
+  data/
+    data_20260101.csv
+    data_20260325.csv
+  scripts/
+    script_20260101_v1.py
+    script_20260101_v2.py    # reviewer fixed the title
+    script_20260325_v1.py    # new data release
+  plots/
+    plot_20260101_v1.png
+    plot_20260101_v2.png
+    plot_20260325_v1.png
+```
+
+## Multi-plot config
+
+```json
+{
+  "title": "My Gallery",
+  "plots": {
+    "revenue": {"path": "./revenue", "description": "Quarterly revenue"},
+    "inflation": {"path": "./inflation", "description": "CPI tracking"}
+  }
+}
+```
+
+```python
+gallery = Gallery.from_config("gallery.json")
+gallery.run()
 ```
 
 ## License
