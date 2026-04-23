@@ -1,5 +1,5 @@
 # === CONFIGURATOR ===
-title: str = "CPI Inflation"
+title: str = "CPI Inflatasdfafe"
 show_core: bool = True
 smoothing: int = 1
 color_cpi: str = "#7CA3C6"

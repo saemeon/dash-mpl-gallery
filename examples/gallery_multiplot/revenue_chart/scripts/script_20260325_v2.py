@@ -1,6 +1,6 @@
 # === CONFIGURATOR ===
 title: str = "Quarterly Revenue"
-subtitle: str = "Actuals vs Target, 2026"
+subtitle: str = "Actuals vs Target, 2026 adsfefas"
 dpi: int = 150
 show_target: bool = True
 

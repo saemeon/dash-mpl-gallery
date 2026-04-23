@@ -36,10 +36,8 @@ ax.grid(axis="y", alpha=0.3)
 plt.tight_layout()
 
 # === SAVE ===
-date = "20260325"
-version = 1
-version = 1
-out = BASE_DIR / "plots" / f"plot_{date}_v{version}.png"
-out.parent.mkdir(parents=True, exist_ok=True)
-plt.savefig(out, dpi=dpi)
-print(f"Saved {out}")
+# The gallery injects: date, version, BASE_DIR, PLOT_OUTPUT_PATH
+from pathlib import Path
+Path(PLOT_OUTPUT_PATH).parent.mkdir(parents=True, exist_ok=True)
+plt.savefig(PLOT_OUTPUT_PATH, dpi=dpi)
+print(f"Saved {PLOT_OUTPUT_PATH}")

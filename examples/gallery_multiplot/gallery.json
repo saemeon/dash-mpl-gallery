@@ -8,6 +8,14 @@
     "inflation": {
       "path": "./inflation",
       "description": "CPI inflation tracking with type-hinted parameters"
+    },
+    "plotly_demo": {
+      "path": "./plotly_demo",
+      "description": "Interactive Plotly chart (same data, interactive output)"
+    },
+    "multi_output": {
+      "path": "./multi_output",
+      "description": "Multi-output: two charts + summary table from one script"
     }
   }
 }

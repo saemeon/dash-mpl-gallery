@@ -27,7 +27,7 @@ from typing import Any
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, ctx, dash_table, dcc, html
+from dash import ALL, Input, Output, State, ctx, dash_table, dcc, html
 
 from gallery_viewer._types import OutputItem, ScriptSections
 from gallery_viewer.backend import FileSystemBackend, StorageBackend
@@ -105,6 +105,130 @@ def _make_editor(id: str, height: str = "200px") -> Any:
             enableLiveAutocompletion=False,
         )
     return dcc.Textarea(id=id, style=_editor_style(height))
+
+
+# ---------------------------------------------------------------------------
+# Sidebar tree helpers
+# ---------------------------------------------------------------------------
+
+_MAX_TREE_DEPTH = 4
+
+
+def _build_sidebar_tree(names: list[str]) -> dict:
+    """Parse slash-delimited names into a nested tree.
+
+    Returns a dict where string keys are group names and ``"__leaves__"``
+    holds a list of full backend keys that are direct children at that level.
+
+    Example::
+
+        _build_sidebar_tree(["a", "g/x", "g/y", "g/sub/z"])
+        # => {"__leaves__": ["a"],
+        #     "g": {"__leaves__": ["g/x", "g/y"],
+        #            "sub": {"__leaves__": ["g/sub/z"]}}}
+    """
+    tree: dict = {"__leaves__": []}
+    for name in names:
+        parts = name.split("/")
+        if len(parts) > _MAX_TREE_DEPTH:
+            parts = parts[: _MAX_TREE_DEPTH - 1] + ["/".join(parts[_MAX_TREE_DEPTH - 1 :])]
+        node = tree
+        for segment in parts[:-1]:
+            if segment not in node:
+                node[segment] = {"__leaves__": []}
+            node = node[segment]
+        node["__leaves__"].append(name)
+    return tree
+
+
+def _render_tree_node(
+    tree: dict,
+    collapsed: list[str],
+    active_plot: str | None,
+    descriptions: dict[str, str],
+    depth: int = 0,
+    path_prefix: str = "",
+) -> list:
+    """Recursively render a sidebar tree node into Dash components."""
+    children = []
+    indent = depth * 14
+
+    # Render sub-groups first, then leaves
+    group_keys = [k for k in tree if k != "__leaves__"]
+    for group in group_keys:
+        group_path = f"{path_prefix}/{group}" if path_prefix else group
+        is_collapsed = group_path in collapsed
+        chevron = "\u25b8" if is_collapsed else "\u25be"
+        children.append(
+            html.Div(
+                [
+                    html.Span(chevron, style={"marginRight": "6px", "fontSize": "10px"}),
+                    html.Span(
+                        group.replace("_", " ").title(),
+                        style={"fontSize": "12px", "color": "#aaa"},
+                    ),
+                ],
+                id={"type": "gv-tree-group", "index": group_path},
+                n_clicks=0,
+                style={
+                    "padding": "5px 8px",
+                    "paddingLeft": f"{indent + 8}px",
+                    "cursor": "pointer",
+                    "userSelect": "none",
+                    "textTransform": "uppercase",
+                    "letterSpacing": "0.04em",
+                    "marginBottom": "2px",
+                },
+            )
+        )
+        if not is_collapsed:
+            children.extend(
+                _render_tree_node(
+                    tree[group],
+                    collapsed,
+                    active_plot,
+                    descriptions,
+                    depth=depth + 1,
+                    path_prefix=group_path,
+                )
+            )
+
+    # Render leaves
+    for name in tree.get("__leaves__", []):
+        label = name.rsplit("/", 1)[-1].replace("_", " ").title()
+        desc = descriptions.get(name, "")
+        is_active = name == active_plot
+        children.append(
+            html.Div(
+                [
+                    html.Div(
+                        label,
+                        style={
+                            "fontWeight": "bold",
+                            "fontSize": "13px",
+                            "color": "#e0e0e0",
+                        },
+                    ),
+                    html.Div(desc, style={"fontSize": "11px", "color": "#888"})
+                    if desc
+                    else None,
+                ],
+                id={"type": "gv-nav-item", "index": name},
+                n_clicks=0,
+                style={
+                    "padding": "8px 10px",
+                    "paddingLeft": f"{indent + 10}px",
+                    "marginBottom": "4px",
+                    "borderRadius": "4px",
+                    "cursor": "pointer",
+                    "backgroundColor": "#3a3a3a" if is_active else "#2a2a2a",
+                    "borderLeft": "3px solid #5b9bd5"
+                    if is_active
+                    else "3px solid transparent",
+                },
+            )
+        )
+    return children
 
 
 # ---------------------------------------------------------------------------
@@ -359,6 +483,7 @@ class Gallery:
                                     data=plot_names[0] if plot_names else None,
                                 ),
                                 dcc.Store(id="gv-gallery-items"),
+                                dcc.Store(id="gv-sidebar-collapsed", data=[]),
                             ],
                         ),
                         # ── EDITOR ────────────────────────────────────────
@@ -688,57 +813,55 @@ class Gallery:
     # ------------------------------------------------------------------
 
     def _register_callbacks(self, app: dash.Dash):
-        # -- Render sidebar nav list --
+        # -- Render sidebar nav list (tree-aware) --
         @app.callback(
             Output("gv-gallery-sidebar", "children"),
             Input("gv-gallery-items", "data"),
             Input("gv-search", "value"),
             Input("gv-plot-select", "data"),
+            Input("gv-sidebar-collapsed", "data"),
         )
-        def render_sidebar(_, search, active_plot):
+        def render_sidebar(_, search, active_plot, collapsed):
             names = self._build_plot_names()
             if search and search.strip():
                 q = search.lower()
                 names = [n for n in names if q in n.lower()]
             if not names:
                 return html.Span("No plots", style={"color": "#666"})
-            children = []
-            for name in names:
-                desc = ""
-                if self._config_path:
-                    config = load_config(self._config_path)
-                    desc = config.get("plots", {}).get(name, {}).get("description", "")
-                is_active = name == active_plot
-                children.append(
-                    html.Div(
-                        [
-                            html.Div(
-                                name.replace("_", " ").title(),
-                                style={
-                                    "fontWeight": "bold",
-                                    "fontSize": "13px",
-                                    "color": "#e0e0e0",
-                                },
-                            ),
-                            html.Div(desc, style={"fontSize": "11px", "color": "#888"})
-                            if desc
-                            else None,
-                        ],
-                        id={"type": "gv-nav-item", "index": name},
-                        n_clicks=0,
-                        style={
-                            "padding": "8px 10px",
-                            "marginBottom": "4px",
-                            "borderRadius": "4px",
-                            "cursor": "pointer",
-                            "backgroundColor": "#3a3a3a" if is_active else "#2a2a2a",
-                            "borderLeft": "3px solid #5b9bd5"
-                            if is_active
-                            else "3px solid transparent",
-                        },
-                    )
-                )
-            return children
+            # Build description lookup
+            descriptions: dict[str, str] = {}
+            if self._config_path:
+                config = load_config(self._config_path)
+                plots_cfg = config.get("plots", {})
+                for name in names:
+                    desc = plots_cfg.get(name, {}).get("description", "")
+                    if desc:
+                        descriptions[name] = desc
+            tree = _build_sidebar_tree(names)
+            return _render_tree_node(
+                tree, collapsed or [], active_plot, descriptions
+            )
+
+        # -- Toggle group collapse/expand --
+        @app.callback(
+            Output("gv-sidebar-collapsed", "data"),
+            Input({"type": "gv-tree-group", "index": ALL}, "n_clicks"),
+            State("gv-sidebar-collapsed", "data"),
+            prevent_initial_call=True,
+        )
+        def toggle_group(n_clicks_list, collapsed):
+            if not any(n_clicks_list):
+                return dash.no_update
+            triggered = ctx.triggered_id
+            if triggered is None:
+                return dash.no_update
+            group_path = triggered["index"]
+            collapsed = list(collapsed or [])
+            if group_path in collapsed:
+                collapsed.remove(group_path)
+            else:
+                collapsed.append(group_path)
+            return collapsed
 
         # -- Click nav item → select plot, load its dates --
         @app.callback(

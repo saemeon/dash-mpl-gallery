@@ -1,6 +1,7 @@
 # === CONFIGURATOR ===
+# Saved by: sinie (2026-04-04 17:13)
 title: str = "Quarterly Revenue"
-subtitle: str = "Actuals vs Target, 2026"
+subtitle: str = "Actuals vs Target, 2028"
 dpi: int = 150
 show_target: bool = True
 

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "gallery-multiplot",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "cd /Users/simonniederberger/Library/CloudStorage/Dropbox/Git/brand-toolkit/dash-mpl-gallery && PYTHONPATH=src /nix/store/lv129j2nzhmqidpp52kf359adwdxxv24-uv-0.8.19/bin/uv run --no-project --with dash --with dash-bootstrap-components --with pandas --with pyarrow --with matplotlib python examples/gallery_multiplot_demo.py"],
+      "port": 8050
+    }
+  ]
+}
