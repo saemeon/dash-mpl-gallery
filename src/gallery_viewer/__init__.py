@@ -7,7 +7,7 @@ from gallery_viewer.gallery import Gallery
 from gallery_viewer.params import (
     ParamSpec,
     detect_params,
-    gallery_param,
+    diff_configurator,
     parse_typed_assignments,
 )
 
@@ -19,8 +19,8 @@ __all__ = [
     "RunResult",
     "OutputItem",
     "ParamSpec",
-    "gallery_param",
     "detect_params",
+    "diff_configurator",
     "parse_typed_assignments",
     "load_config",
     "save_config",

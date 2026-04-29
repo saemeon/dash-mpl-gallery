@@ -2,10 +2,7 @@
 
 from gallery_viewer.params import (
     ParamSpec,
-    clear_registered_params,
     detect_params,
-    gallery_param,
-    get_registered_params,
     parse_typed_assignments,
 )
 
@@ -75,78 +72,12 @@ print("hello")
         assert params["dpi"].default == 150
 
 
-class TestGalleryParamDecorator:
-    def setup_method(self):
-        clear_registered_params()
-
-    def test_decorator_registers_params(self):
-        @gallery_param
-        def configure(title: str = "Q4", dpi: int = 150):
-            pass
-
-        params = get_registered_params()
-        assert "title" in params
-        assert params["title"].default == "Q4"
-        assert params["dpi"].default == 150
-
-    def test_decorator_returns_function(self):
-        @gallery_param
-        def configure(x: int = 1):
-            return x * 2
-
-        assert configure(5) == 10
-
-    def test_decorator_no_annotation_defaults_to_str(self):
-        @gallery_param
-        def configure(name="default"):
-            pass
-
-        params = get_registered_params()
-        assert params["name"].annotation is str
-
-    def test_clear_params(self):
-        @gallery_param
-        def configure(x: int = 1):
-            pass
-
-        assert len(get_registered_params()) == 1
-        clear_registered_params()
-        assert len(get_registered_params()) == 0
-
-
 class TestDetectParams:
-    def test_convention_only(self):
+    def test_convention_params(self):
         source = 'title: str = "Q4 Revenue"\ndpi: int = 150'
         params = detect_params(source)
         assert "title" in params
         assert "dpi" in params
-
-    def test_decorator_in_source(self):
-        source = """
-from gallery_viewer import gallery_param
-
-@gallery_param
-def configure(title: str = "Q4", scale: float = 1.5):
-    pass
-"""
-        params = detect_params(source)
-        assert "title" in params
-        assert params["title"].default == "Q4"
-        assert "scale" in params
-        assert params["scale"].default == 1.5
-
-    def test_decorator_overrides_convention(self):
-        source = """
-title: str = "Convention"
-
-from gallery_viewer import gallery_param
-
-@gallery_param
-def configure(title: str = "Decorator"):
-    pass
-"""
-        params = detect_params(source)
-        assert params["title"].default == "Decorator"
 
     def test_empty_source(self):
         params = detect_params("")

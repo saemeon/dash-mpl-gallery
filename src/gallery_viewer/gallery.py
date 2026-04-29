@@ -37,7 +37,7 @@ from gallery_viewer.config import (
     load_config,
     save_config,
 )
-from gallery_viewer.params import detect_params
+from gallery_viewer.params import detect_params, diff_configurator
 
 # ---------------------------------------------------------------------------
 # Optional: dash-ace for syntax-highlighted editor
@@ -736,7 +736,7 @@ class Gallery:
                                 html.Div(
                                     [
                                         html.Label(
-                                            "Plot",
+                                            "Output",
                                             style={"color": "#aaa", "fontSize": "12px"},
                                         ),
                                         *export_btn,
@@ -751,7 +751,7 @@ class Gallery:
                                     type="circle",
                                     color="#aaa",
                                     children=html.Div(
-                                        id="gv-plot-panel",
+                                        id="gv-output-panel",
                                         style={
                                             "backgroundColor": "#2a2a2a",
                                             "borderRadius": "4px",
@@ -793,6 +793,40 @@ class Gallery:
                 dcc.Download(id="gv-export-script-download"),
             ],
         )
+
+    # ------------------------------------------------------------------
+    # Public headless API
+    # ------------------------------------------------------------------
+
+    def run_script(
+        self,
+        plot_name: str | None,
+        sections: ScriptSections,
+        inject_vars: dict[str, Any] | None = None,
+    ) -> "RunResult":
+        """Run *sections* against *plot_name*'s backend, return ``RunResult``.
+
+        Usable without a browser — no Dash state involved.
+        """
+        from gallery_viewer._types import RunResult  # noqa: F401  (re-exported)
+
+        return self._get_backend(plot_name).run_preview(sections, inject_vars=inject_vars)
+
+    def save_script(
+        self,
+        plot_name: str | None,
+        date: str,
+        sections: ScriptSections,
+        author: str | None = None,
+    ) -> str:
+        """Persist *sections* for *date* under *plot_name*'s backend.
+
+        Applies ``with_author`` when *author* is given.  Returns the new
+        version string.  Usable without a browser.
+        """
+        if author and author.strip():
+            sections = sections.with_author(author.strip())
+        return self._get_backend(plot_name).save_version(date, sections)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -945,7 +979,7 @@ class Gallery:
             Output("gv-editor-script", "value"),
             Output("gv-param-fields", "children"),
             Output("gv-data-panel", "children"),
-            Output("gv-plot-panel", "children"),
+            Output("gv-output-panel", "children"),
             Output("gv-plot-bytes-store", "data"),
             Output("gv-clean-script-store", "data"),
             Input("gv-date", "value"),
@@ -964,7 +998,7 @@ class Gallery:
             param_fields = _build_param_fields(sections.configurator)
 
             data_children = _data_table(backend.load_data(date))
-            plot_bytes = backend.load_plot(date, str(version))
+            plot_bytes = backend.load_artifact(date, str(version))
             plot_children = _plot_img(plot_bytes)
             b64 = base64.b64encode(plot_bytes).decode() if plot_bytes else None
             return script_text, param_fields, data_children, plot_children, b64, script_text
@@ -972,7 +1006,7 @@ class Gallery:
         # -- RUN button --
         @app.callback(
             Output("gv-console", "children"),
-            Output("gv-plot-panel", "children", allow_duplicate=True),
+            Output("gv-output-panel", "children", allow_duplicate=True),
             Output("gv-plot-bytes-store", "data", allow_duplicate=True),
             Input("gv-run-btn", "n_clicks"),
             State("gv-editor-script", "value"),
@@ -983,23 +1017,18 @@ class Gallery:
         def run_script(n_clicks, script_code, param_values, plot_name):
             if not script_code:
                 return "Nothing to run.", _no_plot(), None
-            backend = self._get_backend(plot_name)
             sections = ScriptSections.from_text(script_code)
-
-            # Build injection vars from param form fields
             inject = _param_values_to_inject(sections.configurator, param_values)
-
-            result = backend.run_preview(sections, inject_vars=inject)
+            result = self.run_script(plot_name, sections, inject_vars=inject)
             console = result.output
             if not result.success:
                 console += f"\n--- ERROR ---\n{result.error}"
-            plot_children = _render_outputs(result.items)
             b64 = (
-                base64.b64encode(result.plot_bytes).decode()
-                if result.plot_bytes
+                base64.b64encode(result.image_bytes).decode()
+                if result.image_bytes
                 else None
             )
-            return console or "(no output)", plot_children, b64
+            return console or "(no output)", _render_outputs(result.items), b64
 
         # -- SAVE: step 1 — open modal --
         @app.callback(
@@ -1019,7 +1048,7 @@ class Gallery:
         # -- SAVE: step 2 — actual save + refresh gallery --
         @app.callback(
             Output("gv-console", "children", allow_duplicate=True),
-            Output("gv-plot-panel", "children", allow_duplicate=True),
+            Output("gv-output-panel", "children", allow_duplicate=True),
             Output("gv-gallery-items", "data", allow_duplicate=True),
             Output("gv-date", "options", allow_duplicate=True),
             Output("gv-date", "value", allow_duplicate=True),
@@ -1045,51 +1074,39 @@ class Gallery:
 
             from datetime import date as _date
 
-            # Use selected date, fall back to today
             save_date = selected_date or _date.today().strftime("%Y%m%d")
-            backend = self._get_backend(plot_name)
-
             sections = ScriptSections.from_text(script_code)
 
-            # Apply form field values to the CONFIGURATOR section
-            # so the saved script reflects the reviewer's changes
             if param_values:
-                sections = _inject_params(sections, param_values)
+                inject = _param_values_to_inject(sections.configurator, param_values)
+                if inject:
+                    sections = sections.with_params(inject)
 
-            # Add author comment if provided
-            if author and author.strip():
-                sections = _add_author_comment(sections, author.strip())
+            new_version = self.save_script(plot_name, save_date, sections, author=author)
 
-            new_version = backend.save_version(save_date, sections)
-
+            backend = self._get_backend(plot_name)
             console = (
                 f"Saved v{new_version}\n"
                 f"  scripts/script_{save_date}_v{new_version}.py\n"
                 f"  plots/plot_{save_date}_v{new_version}.png"
             )
-
             dates = backend.list_dates()
             date_opts = [{"label": d, "value": d} for d in dates]
             versions = backend.list_versions(save_date)
             ver_opts = [{"label": f"v{v}", "value": v} for v in versions]
-
-            plot_bytes = backend.load_plot(save_date, str(new_version))
-            plot_children = _plot_img(plot_bytes)
-
-            # Update editor to show the saved script (with form values applied)
+            plot_bytes = backend.load_artifact(save_date, str(new_version))
             updated_script = sections.to_text()
 
-            # gallery-items triggers sidebar rebuild
             return (
                 console,
-                plot_children,
+                _plot_img(plot_bytes),
                 self._build_plot_names(),
                 date_opts,
                 save_date,
                 ver_opts,
                 new_version,
                 updated_script,
-                updated_script,  # update clean-script-store too
+                updated_script,
             )
 
         # -- Update Script from Parameters --
@@ -1104,7 +1121,9 @@ class Gallery:
             if not script_code or not param_values:
                 return dash.no_update
             sections = ScriptSections.from_text(script_code)
-            sections = _inject_params(sections, param_values)
+            inject = _param_values_to_inject(sections.configurator, param_values)
+            if inject:
+                sections = sections.with_params(inject)
             return sections.to_text()
 
         # -- Show/hide Update Script button based on param fields --
@@ -1148,7 +1167,7 @@ class Gallery:
             prev_version = str(int(version) - 1)
             current = backend.load_script(date, version)
             previous = backend.load_script(date, prev_version)
-            diff = _diff_configurator(previous.configurator, current.configurator)
+            diff = diff_configurator(previous.configurator, current.configurator)
             if not diff:
                 return html.Span(
                     f"v{version} — no parameter changes from v{prev_version}",
@@ -1177,7 +1196,7 @@ class Gallery:
             if not plot_name:
                 return (*(dash.no_update,) * 8,)
             backend = self._get_backend(plot_name)
-            uncharted = _find_uncharted_dates(backend)
+            uncharted = backend.list_uncharted_dates()
             if not uncharted:
                 return (
                     *(dash.no_update,) * 6,
@@ -1185,8 +1204,7 @@ class Gallery:
                     dash.no_update,
                 )
             new_date = uncharted[0]  # newest uncharted date
-            # Use copy-from-version (feature 4): latest version of most recent date
-            template = _template_from_latest(backend, new_date)
+            template = backend.template_for_date(new_date)
             script_text = template.to_text()
             param_fields = _build_param_fields(template.configurator)
             dates = backend.list_dates() + [new_date]
@@ -1232,8 +1250,8 @@ class Gallery:
             inject["version"] = int(version) if version else 0
             if hasattr(backend, "base_dir"):
                 inject["BASE_DIR"] = str(backend.base_dir)  # type: ignore[union-attr]
-                inject["PLOT_OUTPUT_PATH"] = str(
-                    backend.plots_dir / f"plot_{date}_v{version}.png"  # type: ignore[union-attr]
+                inject["OUTPUT_PATH"] = str(
+                    backend.artifacts_dir / f"plot_{date}_v{version}.png"  # type: ignore[union-attr]
                 )
             standalone = sections.to_full(inject_vars=inject)
             filename = f"script_{date}_v{version}.py" if date and version else "script.py"
@@ -1311,47 +1329,6 @@ class Gallery:
 # ---------------------------------------------------------------------------
 
 
-def _inject_params(sections: ScriptSections, param_values: list) -> ScriptSections:
-    """Inject parameter field values back into the Configurator section.
-
-    Replaces the default values of typed assignments with the values
-    from the UI input fields.
-    """
-    import re as _re
-
-    params = detect_params(sections.configurator)
-    if not params:
-        return sections
-
-    param_names = list(params.keys())
-    new_lines = []
-    for line in sections.configurator.splitlines():
-        replaced = False
-        for i, name in enumerate(param_names):
-            if i < len(param_values) and param_values[i] is not None:
-                # Match pattern: name: type = value
-                pattern = _re.compile(rf"^({_re.escape(name)}\s*:\s*\w+\s*=\s*)(.+)$")
-                m = pattern.match(line.strip())
-                if m:
-                    val = param_values[i]
-                    if isinstance(val, str):
-                        new_lines.append(f'{m.group(1)}"{val}"')
-                    elif isinstance(val, bool):
-                        new_lines.append(f"{m.group(1)}{val}")
-                    else:
-                        new_lines.append(f"{m.group(1)}{val}")
-                    replaced = True
-                    break
-        if not replaced:
-            new_lines.append(line)
-
-    return ScriptSections(
-        configurator="\n".join(new_lines),
-        code=sections.code,
-        save=sections.save,
-    )
-
-
 def _param_values_to_inject(
     configurator_source: str, param_values: list
 ) -> dict[str, object] | None:
@@ -1417,94 +1394,6 @@ def _build_param_fields(configurator_source: str) -> list:
     if fields:
         fields.insert(0, html.Div("Parameters", style=_SECTION_LABEL))
     return fields
-
-
-def _diff_configurator(old_source: str, new_source: str) -> list[str]:
-    """Diff two CONFIGURATOR sections and return human-readable change strings.
-
-    Compares detected parameters by name: reports added (``+name``),
-    removed (``-name``), and changed (``name: old -> new``) values.
-    """
-    old_params = detect_params(old_source)
-    new_params = detect_params(new_source)
-    changes = []
-    all_names = list(dict.fromkeys(list(old_params.keys()) + list(new_params.keys())))
-    for name in all_names:
-        old_val = old_params.get(name)
-        new_val = new_params.get(name)
-        if old_val is None and new_val is not None:
-            changes.append(f"+{name}={new_val.default!r}")
-        elif old_val is not None and new_val is None:
-            changes.append(f"-{name}")
-        elif old_val is not None and new_val is not None and old_val.default != new_val.default:
-            changes.append(f"{name}: {old_val.default!r} \u2192 {new_val.default!r}")
-    return changes
-
-
-def _find_uncharted_dates(backend: StorageBackend) -> list[str]:
-    """Find data dates that have no scripts yet (newest first)."""
-    if not isinstance(backend, FileSystemBackend):
-        return []
-    data_dates: set[str] = set()
-    if backend.data_dir.exists():
-        for f in backend.data_dir.iterdir():
-            m = backend._data_re.match(f.name)
-            if m:
-                data_dates.add(m.group("date"))
-    script_dates: set[str] = set()
-    if backend.scripts_dir.exists():
-        for f in backend.scripts_dir.iterdir():
-            m = backend._script_re.match(f.name)
-            if m:
-                script_dates.add(m.group("date"))
-    uncharted = data_dates - script_dates
-    return sorted(uncharted, reverse=True)
-
-
-def _template_from_latest(backend: StorageBackend, new_date: str) -> ScriptSections:
-    """Create a template for a new date by copying the latest version of the most recent date.
-
-    Falls back to the starter template if no previous versions exist.
-    """
-    dates = backend.list_dates()
-    for prev_date in dates:
-        versions = backend.list_versions(prev_date)
-        if versions and versions != ["1"]:
-            # Has real scripts — use the latest
-            sections = backend.load_script(prev_date, versions[-1])
-            # Update the data loading date reference in CODE
-            return ScriptSections(
-                configurator=sections.configurator,
-                code=sections.code.replace(f'"{prev_date}"', f'"{new_date}"'),
-                save=sections.save,
-            )
-        elif versions == ["1"]:
-            sections = backend.load_script(prev_date, "1")
-            return ScriptSections(
-                configurator=sections.configurator,
-                code=sections.code.replace(f'"{prev_date}"', f'"{new_date}"'),
-                save=sections.save,
-            )
-    return backend.starter_template(new_date)
-
-
-def _add_author_comment(sections: ScriptSections, author: str) -> ScriptSections:
-    """Add a '# Saved by: ...' comment at the top of the CONFIGURATOR or CODE section."""
-    from datetime import datetime
-
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    comment = f"# Saved by: {author} ({timestamp})"
-    if sections.configurator:
-        return ScriptSections(
-            configurator=comment + "\n" + sections.configurator,
-            code=sections.code,
-            save=sections.save,
-        )
-    return ScriptSections(
-        configurator=sections.configurator,
-        code=comment + "\n" + sections.code,
-        save=sections.save,
-    )
 
 
 def _no_plot():

@@ -1,31 +1,19 @@
 """Parameter detection for gallery scripts.
 
-Two ways to declare configurable parameters in gallery scripts:
-
-1. **Decorator** -- register a function with typed arguments::
-
-    from gallery_viewer import gallery_param
-
-    @gallery_param
-    def configure(title: str = "Q4 Revenue", dpi: int = 150):
-        pass  # values are injected by the gallery
-
-2. **Convention** — type-annotated assignments in the Configurator section::
+Configurable parameters are declared as type-annotated assignments in the
+Configurator section::
 
     # In the Configurator section:
     title: str = "Q4 Revenue"
     dpi: int = 150
 
-Both approaches produce a ``dict[str, ParamSpec]`` that the Gallery uses
-to auto-generate form fields via dash-fn-form.
+These produce a ``dict[str, ParamSpec]`` that the Gallery uses to
+auto-generate form fields.
 """
 
 from __future__ import annotations
 
 import ast
-import contextlib
-import inspect
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -48,48 +36,10 @@ class ParamSpec:
 
 
 # ---------------------------------------------------------------------------
-# Decorator approach
-# ---------------------------------------------------------------------------
-
-_registered_params: dict[str, ParamSpec] = {}
-
-
-def gallery_param(fn: Callable) -> Callable:
-    """Register a function's typed parameters for the gallery sidebar.
-
-    Usage in a gallery script's Configurator section::
-
-        from gallery_viewer import gallery_param
-
-        @gallery_param
-        def configure(title: str = "Q4 Revenue", dpi: int = 150):
-            pass
-
-    The gallery will detect these and generate form fields.
-    """
-    sig = inspect.signature(fn)
-    for name, param in sig.parameters.items():
-        ann = param.annotation if param.annotation != inspect.Parameter.empty else str
-        default = param.default if param.default != inspect.Parameter.empty else ""
-        _registered_params[name] = ParamSpec(name=name, annotation=ann, default=default)
-    return fn
-
-
-def get_registered_params() -> dict[str, ParamSpec]:
-    """Return parameters registered via @gallery_param."""
-    return dict(_registered_params)
-
-
-def clear_registered_params():
-    """Clear the registry (used between script executions)."""
-    _registered_params.clear()
-
-
-# ---------------------------------------------------------------------------
 # Convention approach — parse typed assignments from source code
 # ---------------------------------------------------------------------------
 
-_SUPPORTED_TYPES = {
+_SUPPORTED_TYPES: dict[str, type] = {
     "str": str,
     "int": int,
     "float": float,
@@ -153,11 +103,32 @@ def parse_typed_assignments(source: str) -> dict[str, ParamSpec]:
     return params
 
 
-def detect_params(configurator_source: str) -> dict[str, ParamSpec]:
-    """Detect parameters from a Configurator section using both approaches.
+def diff_configurator(old_source: str, new_source: str) -> list[str]:
+    """Diff two CONFIGURATOR sections, return human-readable change strings.
 
-    1. Parse typed assignments (``title: str = "Q4"``)
-    2. If a ``@gallery_param`` decorator is present, those take precedence
+    Reports added (``+name=val``), removed (``-name``), and changed
+    (``name: old → new``) parameters by comparing detected params by name.
+    """
+    old_params = parse_typed_assignments(old_source)
+    new_params = parse_typed_assignments(new_source)
+    changes = []
+    all_names = list(dict.fromkeys(list(old_params.keys()) + list(new_params.keys())))
+    for name in all_names:
+        old_val = old_params.get(name)
+        new_val = new_params.get(name)
+        if old_val is None and new_val is not None:
+            changes.append(f"+{name}={new_val.default!r}")
+        elif old_val is not None and new_val is None:
+            changes.append(f"-{name}")
+        elif old_val is not None and new_val is not None and old_val.default != new_val.default:
+            changes.append(f"{name}: {old_val.default!r} → {new_val.default!r}")
+    return changes
+
+
+def detect_params(configurator_source: str) -> dict[str, ParamSpec]:
+    """Detect parameters from a Configurator section.
+
+    Parses ``name: type = value`` typed assignments (str, int, float, bool).
 
     Parameters
     ----------
@@ -169,50 +140,4 @@ def detect_params(configurator_source: str) -> dict[str, ParamSpec]:
     dict :
         Mapping of parameter name to ParamSpec.
     """
-    # Convention-based detection
-    params = parse_typed_assignments(configurator_source)
-
-    # Decorator-based detection takes precedence
-    # (the decorator registers params when the script is executed,
-    #  but we can also detect it statically from the source)
-    if "@gallery_param" in configurator_source:
-        # Parse the decorated function's signature from AST
-        try:
-            tree = ast.parse(configurator_source)
-        except SyntaxError:
-            return params
-
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef):
-                continue
-            # Check if decorated with @gallery_param
-            for dec in node.decorator_list:
-                dec_name = None
-                if isinstance(dec, ast.Name):
-                    dec_name = dec.id
-                elif isinstance(dec, ast.Attribute):
-                    dec_name = dec.attr
-                if dec_name == "gallery_param":
-                    # Parse the function's arguments
-                    for arg in node.args.args:
-                        name = arg.arg
-                        ann_type = None
-                        if isinstance(arg.annotation, ast.Name):
-                            ann_type = _SUPPORTED_TYPES.get(arg.annotation.id)
-                        if ann_type is None:
-                            ann_type = str
-
-                        # Find default (ast.FunctionDef.args.defaults is right-aligned)
-                        defaults = node.args.defaults
-                        arg_idx = node.args.args.index(arg)
-                        default_idx = arg_idx - (len(node.args.args) - len(defaults))
-                        default = ""
-                        if default_idx >= 0 and default_idx < len(defaults):
-                            with contextlib.suppress(ValueError, TypeError):
-                                default = ast.literal_eval(defaults[default_idx])
-
-                        params[name] = ParamSpec(
-                            name=name, annotation=ann_type, default=default
-                        )
-
-    return params
+    return parse_typed_assignments(configurator_source)

@@ -37,6 +37,6 @@ fig.update_layout(
 )
 
 # === SAVE ===
-# The gallery injects: date, version, BASE_DIR, PLOT_OUTPUT_PATH
+# The gallery injects: date, version, BASE_DIR, OUTPUT_PATH
 # Plotly can also export static images if kaleido is installed
 print(f"Plotly figure with {len(fig.data)} traces")

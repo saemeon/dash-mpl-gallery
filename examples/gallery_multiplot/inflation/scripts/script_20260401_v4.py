@@ -1,5 +1,6 @@
 # === CONFIGURATOR ===
-title: str = "CPI Inflatasdfafe"
+# Saved by: SINIE (2026-04-29 08:06)
+title: str = "CPI Inflatas"
 show_core: bool = True
 smoothing: int = 1
 color_cpi: str = "#7CA3C6"

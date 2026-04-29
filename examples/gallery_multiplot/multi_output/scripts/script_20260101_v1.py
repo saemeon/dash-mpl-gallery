@@ -52,9 +52,9 @@ if show_total:
     plt.tight_layout()
 
 # === SAVE ===
-# The gallery injects: date, version, BASE_DIR, PLOT_OUTPUT_PATH
+# The gallery injects: date, version, BASE_DIR, OUTPUT_PATH
 from pathlib import Path
-Path(PLOT_OUTPUT_PATH).parent.mkdir(parents=True, exist_ok=True)
+Path(OUTPUT_PATH).parent.mkdir(parents=True, exist_ok=True)
 plt.figure(fig.number)
-plt.savefig(PLOT_OUTPUT_PATH, dpi=150)
-print(f"Saved {PLOT_OUTPUT_PATH}")
+plt.savefig(OUTPUT_PATH, dpi=150)
+print(f"Saved {OUTPUT_PATH}")

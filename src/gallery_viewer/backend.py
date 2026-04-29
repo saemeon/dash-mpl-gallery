@@ -62,8 +62,8 @@ class StorageBackend:
         """Load a data preview for *date* (may return ``None``)."""
         return None
 
-    def load_plot(self, date: str, version: str) -> bytes | None:
-        """Load the plot image bytes for *date*/*version*."""
+    def load_artifact(self, date: str, version: str) -> bytes | None:
+        """Load the saved artifact (e.g. image bytes) for *date*/*version*."""
         return None
 
     # -- Saving --------------------------------------------------------------
@@ -90,10 +90,33 @@ class StorageBackend:
         """Run Configurator + Code + Save, return result."""
         return _run_sections(sections, include_save=True, inject_vars=inject_vars)
 
+    def list_uncharted_dates(self) -> list[str]:
+        """Return data dates that have no scripts yet, newest first."""
+        return []
+
     # -- Templates -----------------------------------------------------------
 
+    def template_for_date(self, date: str) -> ScriptSections:
+        """Return a script template for *date*, copying from the latest existing version.
+
+        Picks the newest prior date, then its latest version.
+        Falls back to ``starter_template(date)`` if no prior versions exist.
+        Override to customise how new-date templates are seeded.
+        """
+        for prev_date in self.list_dates():
+            versions = self.list_versions(prev_date)
+            if not versions:
+                continue
+            sections = self.load_script(prev_date, versions[-1])
+            return ScriptSections(
+                configurator=sections.configurator,
+                code=sections.code.replace(f'"{prev_date}"', f'"{date}"'),
+                save=sections.save,
+            )
+        return self.starter_template(date)
+
     def starter_template(self, date: str) -> ScriptSections:
-        """Return a starter script for a new date (override for branding)."""
+        """Return a blank starter script for a new date (override for branding)."""
         return ScriptSections(
             code=(
                 "import pandas as pd\n"
@@ -268,7 +291,7 @@ class FileSystemBackend(StorageBackend):
     ):
         self.base_dir = Path(base_dir).resolve()
         self.data_dir = self.base_dir / "data"
-        self.plots_dir = self.base_dir / "plots"
+        self.artifacts_dir = self.base_dir / "plots"
         self.scripts_dir = self.base_dir / "scripts"
 
         self._data_re = re.compile(data_pattern)
@@ -344,8 +367,8 @@ class FileSystemBackend(StorageBackend):
                 return pd.read_parquet(p) if ext == "parquet" else pd.read_csv(p)
         return None
 
-    def load_plot(self, date: str, version: str) -> bytes | None:
-        path = self.plots_dir / f"plot_{date}_v{version}.png"
+    def load_artifact(self, date: str, version: str) -> bytes | None:
+        path = self.artifacts_dir / f"plot_{date}_v{version}.png"
         if path.exists():
             return path.read_bytes()
         return None
@@ -354,7 +377,7 @@ class FileSystemBackend(StorageBackend):
 
     def save_version(self, date: str, sections: ScriptSections) -> str:
         self.scripts_dir.mkdir(parents=True, exist_ok=True)
-        self.plots_dir.mkdir(parents=True, exist_ok=True)
+        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
 
         existing = []
         if self.scripts_dir.exists():
@@ -369,22 +392,18 @@ class FileSystemBackend(StorageBackend):
         path.write_text(sections.to_text())
 
         # Inject date/version/paths as execution-time variables
-        plot_path = self.plots_dir / f"plot_{date}_v{new_version}.png"
+        plot_path = self.artifacts_dir / f"plot_{date}_v{new_version}.png"
         inject = {
             "date": date,
             "version": new_version,
             "BASE_DIR": str(self.base_dir),
-            "PLOT_OUTPUT_PATH": str(plot_path),
+            "OUTPUT_PATH": str(plot_path),
         }
 
-        # Run full (includes user's SAVE section if any)
-        self.run_full(sections, inject_vars=inject)
+        result = self.run_full(sections, inject_vars=inject)
 
-        if not plot_path.exists():
-            # Script didn't save a plot itself — capture preview
-            result = self.run_preview(sections, inject_vars=inject)
-            if result.plot_bytes:
-                plot_path.write_bytes(result.plot_bytes)
+        if not plot_path.exists() and result.image_bytes:
+            plot_path.write_bytes(result.image_bytes)
 
         return str(new_version)
 
@@ -407,6 +426,21 @@ class FileSystemBackend(StorageBackend):
         return _run_sections(
             sections, include_save=True, cwd=self.base_dir, inject_vars=inject_vars
         )
+
+    def list_uncharted_dates(self) -> list[str]:
+        data_dates: set[str] = set()
+        if self.data_dir.exists():
+            for f in self.data_dir.iterdir():
+                m = self._data_re.match(f.name)
+                if m:
+                    data_dates.add(m.group("date"))
+        script_dates: set[str] = set()
+        if self.scripts_dir.exists():
+            for f in self.scripts_dir.iterdir():
+                m = self._script_re.match(f.name)
+                if m:
+                    script_dates.add(m.group("date"))
+        return sorted(data_dates - script_dates, reverse=True)
 
     # -- Templates -----------------------------------------------------------
 
@@ -438,7 +472,7 @@ class FileSystemBackend(StorageBackend):
                 "plt.tight_layout()"
             ),
             save=(
-                "# The gallery injects: date, version, BASE_DIR, PLOT_OUTPUT_PATH\n"
+                "# The gallery injects: date, version, BASE_DIR, OUTPUT_PATH\n"
                 "# Add optional post-processing here (e.g. extra exports).\n"
                 "# The plot image is saved automatically by the gallery."
             ),

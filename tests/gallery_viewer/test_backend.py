@@ -67,6 +67,28 @@ class TestScriptSections:
         assert restored.configurator == original.configurator
         assert restored.code == original.code
 
+    def test_with_params_replaces_values(self):
+        s = ScriptSections(configurator='title: str = "old"\ndpi: int = 100', code="pass")
+        result = s.with_params({"title": "new", "dpi": 150})
+        assert 'title: str = "new"' in result.configurator
+        assert "dpi: int = 150" in result.configurator
+        assert result.code == "pass"
+
+    def test_with_params_unknown_name_ignored(self):
+        s = ScriptSections(configurator='title: str = "x"', code="pass")
+        result = s.with_params({"unknown": "y"})
+        assert result.configurator == s.configurator
+
+    def test_with_params_empty_configurator_returns_self(self):
+        s = ScriptSections(code="pass")
+        result = s.with_params({"title": "x"})
+        assert result is s
+
+    def test_with_params_empty_dict_returns_self(self):
+        s = ScriptSections(configurator='title: str = "x"', code="pass")
+        result = s.with_params({})
+        assert result is s
+
 
 # ---------------------------------------------------------------------------
 # StorageBackend (base)
@@ -81,30 +103,30 @@ class TestOutputItem:
 
 
 class TestRunResult:
-    def test_plot_bytes_from_items(self):
+    def test_image_bytes_from_items(self):
         items = [
             OutputItem(mime="text/csv", data=b"x,y\n1,2"),
             OutputItem(mime="image/png", data=b"\x89PNG fake"),
         ]
         result = RunResult(items=items)
-        assert result.plot_bytes == b"\x89PNG fake"
+        assert result.image_bytes == b"\x89PNG fake"
 
-    def test_plot_bytes_none_when_no_images(self):
+    def test_image_bytes_none_when_no_images(self):
         items = [OutputItem(mime="text/csv", data=b"x,y\n1,2")]
         result = RunResult(items=items)
-        assert result.plot_bytes is None
+        assert result.image_bytes is None
 
-    def test_plot_bytes_none_when_empty(self):
+    def test_image_bytes_none_when_empty(self):
         result = RunResult()
-        assert result.plot_bytes is None
+        assert result.image_bytes is None
 
-    def test_plot_bytes_first_image(self):
+    def test_image_bytes_first_image(self):
         items = [
             OutputItem(mime="image/png", data=b"first"),
             OutputItem(mime="image/png", data=b"second"),
         ]
         result = RunResult(items=items)
-        assert result.plot_bytes == b"first"
+        assert result.image_bytes == b"first"
 
 
 class TestScriptSectionsInjectVars:
@@ -143,7 +165,7 @@ class TestStorageBackendBase:
         assert b.list_dates() == []
         assert b.list_versions("x") == []
         assert b.load_data("x") is None
-        assert b.load_plot("x", "1") is None
+        assert b.load_artifact("x", "1") is None
 
     def test_save_not_implemented(self):
         with pytest.raises(NotImplementedError):
@@ -200,15 +222,15 @@ class TestFileSystemBackend:
         b = FileSystemBackend(tmp_gallery)
         assert b.load_data("99991231") is None
 
-    def test_load_plot(self, tmp_gallery):
+    def test_load_artifact(self, tmp_gallery):
         b = FileSystemBackend(tmp_gallery)
-        data = b.load_plot("20240101", "1")
+        data = b.load_artifact("20240101", "1")
         assert data is not None
         assert data.startswith(b"\x89PNG")
 
-    def test_load_plot_missing(self, tmp_gallery):
+    def test_load_artifact_missing(self, tmp_gallery):
         b = FileSystemBackend(tmp_gallery)
-        assert b.load_plot("20240101", "99") is None
+        assert b.load_artifact("20240101", "99") is None
 
     def test_save_version(self, tmp_gallery):
         b = FileSystemBackend(tmp_gallery)
@@ -268,8 +290,8 @@ class TestFileSystemBackend:
         )
         result = b.run_preview(sections)
         assert result.success
-        assert result.plot_bytes is not None
-        assert result.plot_bytes[:4] == b"\x89PNG"
+        assert result.image_bytes is not None
+        assert result.image_bytes[:4] == b"\x89PNG"
 
     def test_run_preview_captures_items(self, tmp_gallery):
         """run_preview should populate result.items with OutputItem objects."""
@@ -317,6 +339,65 @@ class TestFileSystemBackend:
         result = b.run_preview(sections)
         assert not result.success
         assert "boom" in result.error
+
+    def test_save_version_only_one_subprocess(self, tmp_gallery):
+        """save_version must not run the script twice."""
+        b = FileSystemBackend(tmp_gallery)
+        sections = ScriptSections(
+            code=(
+                "import matplotlib\nmatplotlib.use('Agg')\n"
+                "import matplotlib.pyplot as plt\n"
+                "fig, ax = plt.subplots()\nax.plot([1, 2], [3, 4])\n"
+            ),
+        )
+        run_full_calls = []
+        run_preview_calls = []
+        original_run_full = b.run_full
+        original_run_preview = b.run_preview
+
+        def counting_run_full(s, inject_vars=None):
+            run_full_calls.append(1)
+            return original_run_full(s, inject_vars=inject_vars)
+
+        def counting_run_preview(s, inject_vars=None):
+            run_preview_calls.append(1)
+            return original_run_preview(s, inject_vars=inject_vars)
+
+        b.run_full = counting_run_full
+        b.run_preview = counting_run_preview
+
+        b.save_version("20240101", sections)
+
+        assert len(run_full_calls) == 1
+        assert len(run_preview_calls) == 0
+
+    def test_template_for_date_uses_latest_version(self, tmp_gallery):
+        """template_for_date picks the latest version of the most recent date."""
+        b = FileSystemBackend(tmp_gallery)
+        # Fixture has 20240601/v1 and 20240101/v1,v2 — newest date is 20240601
+        template = b.template_for_date("20250101")
+        # Should be based on 20240601/v1 (newest date)
+        assert isinstance(template, ScriptSections)
+
+    def test_template_for_date_replaces_date_string(self, tmp_gallery):
+        """template_for_date substitutes the old date literal with the new one."""
+        b = FileSystemBackend(tmp_gallery)
+        # Write a script whose code contains the source date as a string literal
+        script = ScriptSections(
+            configurator='title: str = "chart"',
+            code='date = "20240601"\nprint(date)',
+        )
+        (tmp_gallery / "scripts" / "script_20240601_v2.py").write_text(script.to_text())
+
+        template = b.template_for_date("20250601")
+        assert '"20250601"' in template.code
+        assert '"20240601"' not in template.code
+
+    def test_template_for_date_no_prior_versions(self, tmp_path):
+        """template_for_date falls back to starter_template when no dates exist."""
+        b = FileSystemBackend(tmp_path)
+        template = b.template_for_date("20250101")
+        assert "matplotlib" in template.code
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ a list of captured outputs).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 
 @dataclass
@@ -108,6 +109,53 @@ class ScriptSections:
         parts.append(self.code)
         return "\n\n".join(parts)
 
+    def with_params(self, params: dict[str, object]) -> ScriptSections:
+        """Return a copy with typed assignments in the configurator replaced by *params*.
+
+        Only replaces lines of the form ``name: type = value``.  Unrecognised
+        names in *params* are silently ignored.
+        """
+        import re as _re
+
+        if not params or not self.configurator:
+            return self
+        new_lines = []
+        for line in self.configurator.splitlines():
+            replaced = False
+            for name, value in params.items():
+                pattern = _re.compile(rf"^({_re.escape(name)}\s*:\s*\w+\s*=\s*)(.+)$")
+                m = pattern.match(line.strip())
+                if m:
+                    if isinstance(value, str):
+                        new_lines.append(f'{m.group(1)}"{value}"')
+                    else:
+                        new_lines.append(f"{m.group(1)}{value}")
+                    replaced = True
+                    break
+            if not replaced:
+                new_lines.append(line)
+        return ScriptSections(
+            configurator="\n".join(new_lines),
+            code=self.code,
+            save=self.save,
+        )
+
+    def with_author(self, author: str) -> ScriptSections:
+        """Return a copy with a '# Saved by: ...' comment prepended to the configurator."""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        comment = f"# Saved by: {author} ({timestamp})"
+        if self.configurator:
+            return ScriptSections(
+                configurator=comment + "\n" + self.configurator,
+                code=self.code,
+                save=self.save,
+            )
+        return ScriptSections(
+            configurator=self.configurator,
+            code=comment + "\n" + self.code,
+            save=self.save,
+        )
+
     def to_full(self, inject_vars: dict[str, object] | None = None) -> str:
         """Configurator + Code + Save (for Save Version).
 
@@ -165,7 +213,7 @@ class RunResult:
 
     ``items`` contains all captured outputs (images, Plotly JSON, CSVs)
     in the order they were discovered by the capture epilogue.  The
-    ``plot_bytes`` convenience property returns the first image item,
+    ``image_bytes`` convenience property returns the first image item,
     used when persisting a PNG to disk.
     """
 
@@ -175,8 +223,8 @@ class RunResult:
     success: bool = True
 
     @property
-    def plot_bytes(self) -> bytes | None:
-        """First image output (for saving PNG to disk)."""
+    def image_bytes(self) -> bytes | None:
+        """First image output (for saving to disk)."""
         for item in self.items:
             if item.mime.startswith("image/"):
                 return item.data

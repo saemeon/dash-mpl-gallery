@@ -291,7 +291,7 @@ class TestScriptToggle:
 
 class TestDiffConfigurator:
     def test_changed_value(self):
-        from gallery_viewer.gallery import _diff_configurator
+        from gallery_viewer.params import diff_configurator as _diff_configurator
 
         old = 'title: str = "old"\ndpi: int = 100'
         new = 'title: str = "new"\ndpi: int = 100'
@@ -300,13 +300,13 @@ class TestDiffConfigurator:
         assert "'old'" in diff[0] and "'new'" in diff[0]
 
     def test_no_changes(self):
-        from gallery_viewer.gallery import _diff_configurator
+        from gallery_viewer.params import diff_configurator as _diff_configurator
 
         source = 'title: str = "same"'
         assert _diff_configurator(source, source) == []
 
     def test_added_param(self):
-        from gallery_viewer.gallery import _diff_configurator
+        from gallery_viewer.params import diff_configurator as _diff_configurator
 
         old = 'title: str = "x"'
         new = 'title: str = "x"\ndpi: int = 150'
@@ -314,7 +314,7 @@ class TestDiffConfigurator:
         assert any("+dpi" in d for d in diff)
 
     def test_removed_param(self):
-        from gallery_viewer.gallery import _diff_configurator
+        from gallery_viewer.params import diff_configurator as _diff_configurator
 
         old = 'title: str = "x"\ndpi: int = 150'
         new = 'title: str = "x"'
@@ -322,7 +322,7 @@ class TestDiffConfigurator:
         assert any("-dpi" in d for d in diff)
 
     def test_multiple_changes(self):
-        from gallery_viewer.gallery import _diff_configurator
+        from gallery_viewer.params import diff_configurator as _diff_configurator
 
         old = 'title: str = "A"\ndpi: int = 100'
         new = 'title: str = "B"\ndpi: int = 200'
@@ -349,11 +349,8 @@ class TestNewDate:
         assert "gv-new-date-btn" in layout_str
 
     def test_find_uncharted_dates(self, tmp_path):
-        from gallery_viewer.gallery import _find_uncharted_dates
-
         (tmp_path / "data").mkdir()
         (tmp_path / "scripts").mkdir()
-        # Data for two dates, scripts for only one
         pd.DataFrame({"x": [1]}).to_csv(
             tmp_path / "data" / "data_20240101.csv", index=False
         )
@@ -364,32 +361,22 @@ class TestNewDate:
         (tmp_path / "scripts" / "script_20240101_v1.py").write_text(script.to_text())
 
         backend = FileSystemBackend(tmp_path)
-        uncharted = _find_uncharted_dates(backend)
-        assert uncharted == ["20240601"]
+        assert backend.list_uncharted_dates() == ["20240601"]
 
     def test_find_uncharted_dates_all_charted(self, tmp_gallery):
-        from gallery_viewer.gallery import _find_uncharted_dates
-
         backend = FileSystemBackend(tmp_gallery)
-        uncharted = _find_uncharted_dates(backend)
-        assert uncharted == []
+        assert backend.list_uncharted_dates() == []
 
     def test_template_from_latest(self, tmp_gallery):
-        from gallery_viewer.gallery import _template_from_latest
-
         backend = FileSystemBackend(tmp_gallery)
-        template = _template_from_latest(backend, "20240601")
-        # Should copy from 20240101 v1 and replace the date
+        template = backend.template_for_date("20240601")
         assert "20240601" in template.code or template.configurator != ""
 
     def test_template_from_latest_fallback(self, tmp_path):
-        from gallery_viewer.gallery import _template_from_latest
-
         (tmp_path / "data").mkdir()
         (tmp_path / "scripts").mkdir()
         backend = FileSystemBackend(tmp_path)
-        template = _template_from_latest(backend, "20240101")
-        # Should fall back to starter template
+        template = backend.template_for_date("20240101")
         assert "plt" in template.code
 
 
@@ -482,20 +469,16 @@ class TestAuthorMetadata:
         assert "gv-save-author" in layout_str
 
     def test_add_author_comment(self):
-        from gallery_viewer.gallery import _add_author_comment
-
         sections = ScriptSections(
             configurator='title: str = "test"', code="print('hi')"
         )
-        result = _add_author_comment(sections, "Alice")
+        result = sections.with_author("Alice")
         assert "# Saved by: Alice" in result.configurator
         assert result.code == sections.code
 
     def test_add_author_comment_no_configurator(self):
-        from gallery_viewer.gallery import _add_author_comment
-
         sections = ScriptSections(code="print('hi')")
-        result = _add_author_comment(sections, "Bob")
+        result = sections.with_author("Bob")
         assert "# Saved by: Bob" in result.code
         assert result.configurator == ""
 
@@ -524,3 +507,43 @@ class TestGetBackend:
         b2 = FileSystemBackend(tmp_path)
         g = Gallery(backends={"x": b1, "y": b2})
         assert g._build_plot_names() == ["x", "y"]
+
+
+# ---------------------------------------------------------------------------
+# Headless API
+# ---------------------------------------------------------------------------
+
+
+class TestHeadlessAPI:
+    def test_run_script_no_browser(self, tmp_gallery):
+        """Gallery.run_script() works without instantiating the Dash app."""
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        sections = ScriptSections(code="x = 1 + 1\nprint(x)")
+        result = g.run_script(None, sections)
+        assert result.success
+        assert "2" in result.output
+
+    def test_save_script_no_browser(self, tmp_gallery):
+        """Gallery.save_script() writes a new version without touching Dash."""
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        sections = ScriptSections(
+            configurator='title: str = "headless"',
+            code=(
+                "import matplotlib\n"
+                'matplotlib.use("Agg")\n'
+                "import matplotlib.pyplot as plt\n"
+                "fig, ax = plt.subplots()\n"
+                "ax.plot([1, 2], [3, 4])\n"
+            ),
+        )
+        new_version = g.save_script(None, "20240101", sections, author="Alice")
+        assert new_version == "2"  # fixture already has v1
+        saved = backend.load_script("20240101", new_version)
+        assert "# Saved by: Alice" in saved.to_text()
+        assert "headless" in saved.configurator
