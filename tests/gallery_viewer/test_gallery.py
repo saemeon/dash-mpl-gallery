@@ -1131,36 +1131,36 @@ class TestIntentCapture:
 # ---------------------------------------------------------------------------
 
 
-class TestUserRegistration:
-    def test_default_user_is_none(self):
+class TestContextRegistration:
+    def test_default_context_is_empty(self):
         g = Gallery()
-        assert g.user is None
+        assert g.context == {}
 
-    def test_user_set_via_constructor(self):
-        g = Gallery(user="Paul")
-        assert g.user == "Paul"
+    def test_context_set_via_constructor(self):
+        g = Gallery(context={"author": "Paul", "env": "prod"})
+        assert g.context == {"author": "Paul", "env": "prod"}
 
-    def test_user_is_mutable_after_init(self, tmp_gallery):
+    def test_context_is_mutable_after_init(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
-        g.user = "Alice"
-        assert g.user == "Alice"
+        g.context["author"] = "Alice"
+        assert g.context["author"] == "Alice"
 
-    def test_save_script_falls_back_to_user_when_no_author(self, tmp_gallery):
+    def test_save_script_falls_back_to_context_author(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
 
         backend = FileSystemBackend(tmp_gallery)
-        g = Gallery(backend=backend, user="Paul")
+        g = Gallery(backend=backend, context={"author": "Paul"})
         sections = ScriptSections(configurator='x: int = 1', code="print(1)")
         g.save_script(None, "20240101", sections, author=None)
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
         assert "# author: Paul" in saved.to_text()
 
-    def test_explicit_author_overrides_registered_user(self, tmp_gallery):
+    def test_explicit_author_overrides_context(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
 
         backend = FileSystemBackend(tmp_gallery)
-        g = Gallery(backend=backend, user="Paul")
+        g = Gallery(backend=backend, context={"author": "Paul"})
         sections = ScriptSections(configurator='x: int = 1', code="print(1)")
         g.save_script(None, "20240101", sections, author="Alice")
         latest = g.list_versions(None, "20240101")[-1]
@@ -1168,44 +1168,53 @@ class TestUserRegistration:
         assert "# author: Alice" in saved.to_text()
         assert "Paul" not in saved.to_text()
 
-    def test_blank_author_falls_back_to_user(self, tmp_gallery):
+    def test_blank_author_falls_back_to_context(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
 
         backend = FileSystemBackend(tmp_gallery)
-        g = Gallery(backend=backend, user="Paul")
+        g = Gallery(backend=backend, context={"author": "Paul"})
         sections = ScriptSections(configurator='x: int = 1', code="print(1)")
         g.save_script(None, "20240101", sections, author="   ")  # whitespace only
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
         assert "# author: Paul" in saved.to_text()
 
-    def test_no_user_no_author_no_stamp(self, tmp_gallery):
+    def test_no_context_no_author_no_stamp(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
 
         backend = FileSystemBackend(tmp_gallery)
-        g = Gallery(backend=backend)  # no user
+        g = Gallery(backend=backend)
         sections = ScriptSections(configurator='x: int = 1', code="print(1)")
         g.save_script(None, "20240101", sections, author=None)
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
-        # No author at all → no "Saved by" line
         assert "# author:" not in saved.to_text()
 
-    def test_layout_contains_current_user_store(self, tmp_gallery):
-        g = Gallery(backend=FileSystemBackend(tmp_gallery), user="Paul")
-        layout_str = str(g.app.layout)
-        assert "gv-current-user" in layout_str
-
-    def test_user_runtime_change_affects_subsequent_saves(self, tmp_gallery):
-        """Setting g.user after init affects subsequent saves (single-user mode)."""
+    def test_extra_context_keys_stamped(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
 
         backend = FileSystemBackend(tmp_gallery)
-        g = Gallery(backend=backend, user="Paul")
+        g = Gallery(backend=backend, context={"author": "Paul", "env": "prod"})
+        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        g.save_script(None, "20240101", sections)
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest)
+        assert "# env: prod" in saved.to_text()
+
+    def test_layout_contains_context_store(self, tmp_gallery):
+        g = Gallery(backend=FileSystemBackend(tmp_gallery), context={"author": "Paul"})
+        layout_str = str(g.app.layout)
+        assert "gv-context" in layout_str
+
+    def test_context_runtime_change_affects_subsequent_saves(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend, context={"author": "Paul"})
         s1 = ScriptSections(configurator='x: int = 1', code="print(1)")
         s2 = ScriptSections(configurator='x: int = 2', code="print(2)")
         g.save_script(None, "20240101", s1)  # → Paul
-        g.user = "Alice"
+        g.context["author"] = "Alice"
         g.save_script(None, "20240101", s2)  # → Alice
         versions = g.list_versions(None, "20240101")
         last_two = versions[-2:]

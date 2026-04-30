@@ -294,7 +294,7 @@ class Gallery:
         export_fn: Callable[[bytes], bytes] | None = None,
         extra_controls: Any = None,
         config_path: str | Path | None = None,
-        user: str | None = None,
+        context: dict[str, str] | None = None,
         track_packages: list[str] | None = None,
     ):
         if backends is not None:
@@ -309,11 +309,14 @@ class Gallery:
         self.theme = theme or dbc.themes.SLATE
         self.export_fn = export_fn
         self.extra_controls = extra_controls
-        self.user = user
-        """Default username for save metadata. Seeds the per-session
-        ``gv-current-user`` Store at app build time. For multi-user
-        deployments, override the Store via a Dash callback (e.g. from
-        a login flow) — sessions are isolated; no process-wide leakage."""
+
+        self.context: dict[str, str] = dict(context) if context else {}
+        """Ambient key-value pairs stamped into every saved version's metadata.
+        Captures who/where/how: ``{"author": "Alice", "env": "prod"}``.
+        Seeds the per-session ``gv-context`` Store at app build time — Dash
+        deployments can override it per-session via a login callback:
+            Output("gv-context", "data") <- {"author": logged_in_user}
+        """
 
         self.track_packages = list(track_packages) if track_packages else []
         """Package names whose installed version should be stamped into the
@@ -955,13 +958,13 @@ class Gallery:
                 dcc.Store(id="gv-plot-bytes-store"),
                 # Track the last-loaded script text for dirty detection
                 dcc.Store(id="gv-clean-script-store"),
-                # Per-session current user — seeded from Gallery(user=...) at
+                # Per-session context — seeded from Gallery(context=...) at
                 # init. Multi-user deployments override via a login callback:
-                #     Output("gv-current-user", "data") <- logged_in_username
+                #     Output("gv-context", "data") <- {"author": username, ...}
                 dcc.Store(
-                    id="gv-current-user",
+                    id="gv-context",
                     storage_type="session",
-                    data=self.user,
+                    data=self.context,
                 ),
                 dcc.ConfirmDialog(
                     id="gv-confirm-navigate",
@@ -1041,22 +1044,26 @@ class Gallery:
 
         Stamps a ``# === METADATA ===`` block at the top of the script:
 
-        - ``author`` — from *author* (falls back to ``self.user``)
+        - ``author`` — from *author* (falls back to ``self.context["author"]``)
         - ``saved`` — current timestamp
         - ``change`` — from *change_note* (free-form rationale: "what changed
           in this version?")
+        - all other ``self.context`` keys — stamped after the above
         - provenance keys — data hash, Python + tracked package versions
 
         Returns the new version string.  Usable without a browser.
         """
-        if not (author and author.strip()):
-            author = self.user
+        resolved_author = (author and author.strip()) or self.context.get("author", "")
         meta: dict[str, str] = {}
-        if author and author.strip():
-            meta["author"] = author.strip()
+        if resolved_author:
+            meta["author"] = resolved_author
             meta["saved"] = datetime.now().strftime("%Y-%m-%d %H:%M")
         if change_note and change_note.strip():
             meta["change"] = change_note.strip()
+        # Remaining context keys (env, team, via, …) stamped after human fields.
+        for k, v in self.context.items():
+            if k != "author" and k not in meta and v:
+                meta[k] = v
         # Provenance: data hash, Python version, tracked package versions.
         # Stamped after the human-facing fields so the file reads top-down:
         # who, why, then what-environment.
@@ -1543,19 +1550,20 @@ class Gallery:
                 return True
             return False
 
-        # -- SAVE: step 1.5 — pre-fill author from current-user store --
-        # Fires when the modal opens; if a user is registered (single-user
-        # via Gallery(user=...) or multi-user via login callback), pre-fill
-        # the author field. The user can still override before submitting.
+        # -- SAVE: step 1.5 — pre-fill author from context store --
+        # Fires when the modal opens. Pre-fills from context["author"] if set.
+        # The user can still override before submitting.
         @app.callback(
             Output("gv-save-author", "value"),
             Input("gv-save-modal", "is_open"),
-            State("gv-current-user", "data"),
+            State("gv-context", "data"),
             prevent_initial_call=True,
         )
-        def prefill_author_from_user(is_open, current_user):
-            if is_open and current_user:
-                return current_user
+        def prefill_author_from_context(is_open, context_data):
+            if is_open and context_data:
+                author = (context_data or {}).get("author", "")
+                if author:
+                    return author
             return dash.no_update
 
         # -- SAVE: step 2 — actual save + refresh gallery --
