@@ -78,6 +78,28 @@ _SECTION_LABEL = {
 }
 
 
+# Conventional tag colors. Anything not listed falls back to "secondary"
+# (grey). ``frozen`` reads as a warning even though it's purely informational
+# — Save always creates a new version, so there's nothing to enforce.
+_TAG_COLORS = {
+    "published": "success",   # green
+    "final": "primary",       # blue
+    "frozen": "danger",       # red
+    "draft": "secondary",     # grey
+    "wip": "secondary",       # grey
+}
+
+
+def _tag_badge(tag: str) -> Any:
+    """Render a single tag as a dbc.Badge with conventional color."""
+    return dbc.Badge(
+        tag,
+        color=_TAG_COLORS.get(tag, "secondary"),
+        pill=True,
+        style={"marginRight": "4px", "fontSize": "10px"},
+    )
+
+
 def _editor_style(height: str = "200px") -> dict:
     return {
         **_MONOSPACE,
@@ -595,6 +617,63 @@ class Gallery:
                                         ),
                                     ]
                                 ),
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            width=5,
+                                            children=[
+                                                html.Label(
+                                                    "Filter",
+                                                    style={
+                                                        "color": "#aaa",
+                                                        "fontSize": "12px",
+                                                    },
+                                                ),
+                                                dcc.Dropdown(
+                                                    id="gv-tag-filter",
+                                                    placeholder="All versions",
+                                                    clearable=True,
+                                                    style={"marginBottom": "6px"},
+                                                ),
+                                            ],
+                                        ),
+                                        dbc.Col(
+                                            width=5,
+                                            children=[
+                                                html.Label(
+                                                    "Tags",
+                                                    style={
+                                                        "color": "#aaa",
+                                                        "fontSize": "12px",
+                                                    },
+                                                ),
+                                                html.Div(
+                                                    id="gv-tags-row",
+                                                    style={
+                                                        "marginBottom": "6px",
+                                                        "minHeight": "24px",
+                                                    },
+                                                ),
+                                            ],
+                                        ),
+                                        dbc.Col(
+                                            width=2,
+                                            children=[
+                                                html.Label(
+                                                    " ", style={"fontSize": "12px"}
+                                                ),
+                                                dbc.Button(
+                                                    "Edit",
+                                                    id="gv-edit-tags-btn",
+                                                    color="secondary",
+                                                    size="sm",
+                                                    n_clicks=0,
+                                                    style={"width": "100%"},
+                                                ),
+                                            ],
+                                        ),
+                                    ]
+                                ),
                                 extra,
                                 html.Div(
                                     id="gv-param-fields", style={"marginBottom": "4px"}
@@ -767,6 +846,55 @@ class Gallery:
                                         ),
                                     ],
                                     id="gv-save-modal",
+                                    is_open=False,
+                                ),
+                                dbc.Modal(
+                                    [
+                                        dbc.ModalHeader("Edit Tags"),
+                                        dbc.ModalBody(
+                                            [
+                                                html.P(
+                                                    "Add or remove tags for this version.",
+                                                    style={"marginBottom": "8px"},
+                                                ),
+                                                html.Div(
+                                                    id="gv-edit-tags-current",
+                                                    style={"marginBottom": "12px"},
+                                                ),
+                                                dbc.Label(
+                                                    "Add tag",
+                                                    style={"fontSize": "12px"},
+                                                ),
+                                                dbc.InputGroup(
+                                                    [
+                                                        dbc.Input(
+                                                            id="gv-new-tag-input",
+                                                            type="text",
+                                                            placeholder="e.g. published, final",
+                                                            size="sm",
+                                                        ),
+                                                        dbc.Button(
+                                                            "+",
+                                                            id="gv-add-tag-btn",
+                                                            color="primary",
+                                                            size="sm",
+                                                        ),
+                                                    ]
+                                                ),
+                                            ]
+                                        ),
+                                        dbc.ModalFooter(
+                                            [
+                                                dbc.Button(
+                                                    "Done",
+                                                    id="gv-edit-tags-done",
+                                                    color="primary",
+                                                    size="sm",
+                                                ),
+                                            ]
+                                        ),
+                                    ],
+                                    id="gv-edit-tags-modal",
                                     is_open=False,
                                 ),
                             ],
@@ -1046,6 +1174,51 @@ class Gallery:
         sections = self.load_script(plot_name, date, version)
         return sections.metadata.get("author") or None
 
+    # -- Tag facade ----------------------------------------------------------
+    #
+    # Tags are the only mutation that touches an existing saved version in
+    # place — Save always creates a new version. Conventional tag names with
+    # special UI rendering: ``published`` (green), ``final`` (blue),
+    # ``frozen`` (red), ``draft`` / ``wip`` (grey). ``frozen`` is purely
+    # informational — the save path always creates a new version by
+    # construction, so there's nothing to enforce.
+
+    def list_tags(self, plot_name: str | None, date: str, version: str) -> list[str]:
+        """Return tags attached to *date*/*version* under *plot_name*."""
+        return self._get_backend(plot_name).list_tags(date, version)
+
+    def add_tag(
+        self, plot_name: str | None, date: str, version: str, tag: str
+    ) -> list[str]:
+        """Attach *tag* to *date*/*version* in place. Returns new tag list."""
+        return self._get_backend(plot_name).add_tag(date, version, tag)
+
+    def remove_tag(
+        self, plot_name: str | None, date: str, version: str, tag: str
+    ) -> list[str]:
+        """Remove *tag* from *date*/*version* in place. Returns new tag list."""
+        return self._get_backend(plot_name).remove_tag(date, version, tag)
+
+    def versions_with_tag(
+        self, plot_name: str | None, date: str, tag: str
+    ) -> list[str]:
+        """Return versions of *date* carrying *tag*, ascending."""
+        return self._get_backend(plot_name).versions_with_tag(date, tag)
+
+    def all_tags(self, plot_name: str | None, date: str) -> list[str]:
+        """Return the union of tags across all versions of *date*, sorted.
+
+        Used to populate the tag-filter dropdown — only tags that actually
+        exist on disk show up.
+        """
+        backend = self._get_backend(plot_name)
+        seen: list[str] = []
+        for v in backend.list_versions(date):
+            for t in backend.list_tags(date, v):
+                if t not in seen:
+                    seen.append(t)
+        return sorted(seen)
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -1232,6 +1405,128 @@ class Gallery:
                 else None
             )
             return console or "(no output)", _render_outputs(result.items), b64
+
+        # -- TAGS: update tag row when version changes --
+        @app.callback(
+            Output("gv-tags-row", "children"),
+            Output("gv-tag-filter", "options"),
+            Input("gv-version", "value"),
+            State("gv-date", "value"),
+            State("gv-plot-select", "data"),
+        )
+        def update_tags_row(version, date, plot_name):
+            if not date or not version:
+                return [], []
+            tags = self.list_tags(plot_name, date, version)
+            all_tags = self.all_tags(plot_name, date)
+            tag_badges = [_tag_badge(t) for t in tags]
+            tag_options = [{"label": t, "value": t} for t in all_tags]
+            return tag_badges, tag_options
+
+        # -- TAGS: toggle edit modal --
+        @app.callback(
+            Output("gv-edit-tags-modal", "is_open"),
+            Output("gv-edit-tags-current", "children"),
+            Input("gv-edit-tags-btn", "n_clicks"),
+            Input("gv-edit-tags-done", "n_clicks"),
+            State("gv-edit-tags-modal", "is_open"),
+            State("gv-date", "value"),
+            State("gv-version", "value"),
+            State("gv-plot-select", "data"),
+        )
+        def toggle_edit_tags_modal(n_edit, n_done, is_open, date, version, plot_name):
+            trigger = ctx.triggered_id
+            if trigger == "gv-edit-tags-btn" and not is_open:
+                if date and version:
+                    tags = self.list_tags(plot_name, date, version)
+                    tag_list = [
+                        dbc.Badge(
+                            [
+                                t,
+                                html.Span(
+                                    " ×",
+                                    id={"type": "gv-tag-remove", "index": t},
+                                    style={"marginLeft": "4px", "cursor": "pointer"},
+                                    n_clicks=0,
+                                ),
+                            ],
+                            color=_TAG_COLORS.get(t, "secondary"),
+                            pill=True,
+                            style={"marginRight": "4px", "marginBottom": "4px"},
+                        )
+                        for t in tags
+                    ]
+                    return True, tag_list
+            if trigger == "gv-edit-tags-done":
+                return False, dash.no_update
+            return dash.no_update, dash.no_update
+
+        # -- TAGS: add/remove tags via modal --
+        @app.callback(
+            Output("gv-new-tag-input", "value"),
+            Output("gv-edit-tags-current", "children"),
+            Input("gv-add-tag-btn", "n_clicks"),
+            Input({"type": "gv-tag-remove", "index": ALL}, "n_clicks"),
+            State("gv-new-tag-input", "value"),
+            State("gv-date", "value"),
+            State("gv-version", "value"),
+            State("gv-plot-select", "data"),
+            prevent_initial_call=True,
+        )
+        def manage_tags(add_clicks, remove_clicks, new_tag, date, version, plot_name):
+            if not date or not version:
+                return "", dash.no_update
+            trigger = ctx.triggered_id
+            if trigger == "gv-add-tag-btn" and new_tag:
+                self.add_tag(plot_name, date, version, new_tag.strip())
+            elif isinstance(trigger, dict) and trigger.get("type") == "gv-tag-remove":
+                tag_to_remove = trigger["index"]
+                self.remove_tag(plot_name, date, version, tag_to_remove)
+            tags = self.list_tags(plot_name, date, version)
+            tag_list = [
+                dbc.Badge(
+                    [
+                        t,
+                        html.Span(
+                            " ×",
+                            id={"type": "gv-tag-remove", "index": t},
+                            style={"marginLeft": "4px", "cursor": "pointer"},
+                            n_clicks=0,
+                        ),
+                    ],
+                    color=_TAG_COLORS.get(t, "secondary"),
+                    pill=True,
+                    style={"marginRight": "4px", "marginBottom": "4px"},
+                )
+                for t in tags
+            ]
+            return "", tag_list
+
+        # -- TAGS: filter version dropdown by tag --
+        @app.callback(
+            Output("gv-version", "options"),
+            Output("gv-version", "value"),
+            Input("gv-tag-filter", "value"),
+            State("gv-date", "value"),
+            State("gv-plot-select", "data"),
+            State("gv-version", "value"),
+            prevent_initial_call=True,
+        )
+        def filter_versions_by_tag(selected_tag, date, plot_name, current_version):
+            if not date:
+                return [], None
+            backend = self._get_backend(plot_name)
+            all_versions = backend.list_versions(date)
+            if selected_tag:
+                filtered = backend.versions_with_tag(date, selected_tag)
+                versions = [v for v in all_versions if v in filtered]
+            else:
+                versions = all_versions
+            options = [{"label": f"v{v}", "value": v} for v in versions]
+            new_value = (
+                current_version if current_version in versions else (versions[-1] if versions else None)
+            )
+            return options, new_value
 
         # -- SAVE: step 1 — open modal --
         @app.callback(

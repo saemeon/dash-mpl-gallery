@@ -72,6 +72,68 @@ class StorageBackend:
         """Persist *sections* and return the new version identifier."""
         raise NotImplementedError
 
+    # -- Tags ----------------------------------------------------------------
+    #
+    # Tag operations are the **only** path that mutates an existing saved
+    # version in place — everything else (Save) creates a new version. The
+    # default implementations go through ``load_script`` + a backend-specific
+    # in-place writer (``_write_script``) so subclasses only need to override
+    # the writer.
+
+    def list_tags(self, date: str, version: str) -> list[str]:
+        """Return tags attached to *date*/*version*, in insertion order."""
+        return list(self.load_script(date, version).tags)
+
+    def add_tag(self, date: str, version: str, tag: str) -> list[str]:
+        """Attach *tag* to *date*/*version* in place. Returns the new tag list.
+
+        Idempotent: adding an existing tag is a no-op. Whitespace is stripped.
+        """
+        tag = tag.strip()
+        if not tag:
+            return self.list_tags(date, version)
+        sections = self.load_script(date, version)
+        if tag in sections.tags:
+            return list(sections.tags)
+        sections = sections.with_tags([tag])
+        self._write_script(date, version, sections)
+        return list(sections.tags)
+
+    def remove_tag(self, date: str, version: str, tag: str) -> list[str]:
+        """Remove *tag* from *date*/*version* in place. Returns the new tag list.
+
+        Silently no-ops if the tag isn't present.
+        """
+        sections = self.load_script(date, version)
+        if tag not in sections.tags:
+            return list(sections.tags)
+        new_tags = [t for t in sections.tags if t != tag]
+        sections = sections.with_tags(new_tags, replace=True)
+        self._write_script(date, version, sections)
+        return list(sections.tags)
+
+    def versions_with_tag(self, date: str, tag: str) -> list[str]:
+        """Return versions of *date* carrying *tag*, in ``list_versions`` order."""
+        return [
+            v
+            for v in self.list_versions(date)
+            if tag in self.list_tags(date, v)
+        ]
+
+    def _write_script(
+        self, date: str, version: str, sections: ScriptSections
+    ) -> None:
+        """Overwrite the stored script for *date*/*version* with *sections*.
+
+        Used by :meth:`add_tag` / :meth:`remove_tag` to mutate an existing
+        version's metadata in place without re-running the script. The base
+        class raises — backends that support tag editing must override.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support in-place script writes "
+            "(needed for tag editing)."
+        )
+
     # -- Execution -----------------------------------------------------------
 
     def run_preview(
@@ -425,6 +487,24 @@ class FileSystemBackend(StorageBackend):
             plot_path.write_bytes(result.image_bytes)
 
         return str(new_version)
+
+    # -- In-place writes (for tag edits) ------------------------------------
+
+    def _write_script(
+        self, date: str, version: str, sections: ScriptSections
+    ) -> None:
+        """Overwrite the stored script file with *sections*.
+
+        Does **not** re-run the script — used only for metadata-only mutations
+        like adding/removing tags. The plot artifact is left untouched, since
+        tags are pure labels and don't change script output.
+        """
+        path = self.scripts_dir / f"script_{date}_v{version}.py"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"No saved script for {date}/v{version} at {path}"
+            )
+        path.write_text(sections.to_text())
 
     # -- Execution (override to set cwd) ------------------------------------
 

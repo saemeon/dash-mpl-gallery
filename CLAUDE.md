@@ -198,9 +198,9 @@ Analogous to git tags: cheap, additive, never destructive.
   `# tags: published, final` — flat-file principle preserved (#3).
 - Free-form strings, no enforced vocabulary, but a few are conventional and
   surfaced in the UI: `published`, `final`, `draft`, `wip`, `frozen`.
-- `frozen` is the one tag with behavioral consequences: the UI refuses to
-  overwrite a frozen version — Save always creates a new version. Everything
-  else is purely informational / for filtering.
+- `frozen` is purely informational since `save_version` always creates a new
+  version by construction. There is nothing to enforce. Everything is purely
+  informational / for filtering.
 - Rendered as small badges next to the version dropdown.
 - Filter chip in the version selector ("show only `published`").
 - Backend API on `Gallery` / `StorageBackend`:
