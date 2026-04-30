@@ -838,6 +838,204 @@ class TestHeadlessWorkflow:
 
 
 # ---------------------------------------------------------------------------
+# Intent capture (per-version description / "why" message)
+# ---------------------------------------------------------------------------
+
+
+class TestIntentCapture:
+    def test_description_stamped_into_script(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        g.save_script(
+            None, "20240101", sections,
+            author="Alice",
+            description="Switched to log scale because small categories were buried.",
+        )
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        assert "# Description: Switched to log scale" in saved
+        assert "# Saved by: Alice" in saved
+
+    def test_multiline_description_indented(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        g.save_script(
+            None, "20240101", sections,
+            author="A",
+            description="line one\nline two\nline three",
+        )
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        assert "# Description:" in saved
+        assert "#   line one" in saved
+        assert "#   line two" in saved
+        assert "#   line three" in saved
+
+    def test_no_description_no_stamp(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        g.save_script(None, "20240101", sections, author="A")
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        assert "# Description" not in saved
+
+    def test_blank_description_skipped(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        g.save_script(None, "20240101", sections, author="A", description="   ")
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        assert "# Description" not in saved
+
+    def test_description_without_author_works(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        g.save_script(None, "20240101", sections, description="why this version")
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        assert "# Description: why this version" in saved
+        assert "# Saved by:" not in saved
+
+    def test_with_metadata_preserves_order(self):
+        from gallery_viewer._types import ScriptSections
+
+        s = ScriptSections(configurator='x: int = 1', code="print(1)")
+        result = s.with_metadata({"First": "a", "Second": "b", "Third": "c"})
+        text = result.configurator
+        # Stamped lines appear in dict order
+        first_idx = text.index("# First:")
+        second_idx = text.index("# Second:")
+        third_idx = text.index("# Third:")
+        assert first_idx < second_idx < third_idx
+
+    def test_with_metadata_empty_values_skipped(self):
+        from gallery_viewer._types import ScriptSections
+
+        s = ScriptSections(configurator='x: int = 1', code="print(1)")
+        result = s.with_metadata({"Skip": "", "Keep": "value", "AlsoSkip": None})
+        assert "# Skip" not in result.configurator
+        assert "# Keep: value" in result.configurator
+        assert "# AlsoSkip" not in result.configurator
+
+    def test_with_metadata_empty_dict_returns_unchanged(self):
+        from gallery_viewer._types import ScriptSections
+
+        s = ScriptSections(configurator='x: int = 1', code="print(1)")
+        result = s.with_metadata({})
+        assert result.configurator == s.configurator
+        assert result.code == s.code
+
+    def test_layout_contains_description_textarea(self, tmp_gallery):
+        g = Gallery(backend=FileSystemBackend(tmp_gallery))
+        layout_str = str(g.app.layout)
+        assert "gv-save-description" in layout_str
+
+
+# ---------------------------------------------------------------------------
+# Current-user registration (Gallery.user)
+# ---------------------------------------------------------------------------
+
+
+class TestUserRegistration:
+    def test_default_user_is_none(self):
+        g = Gallery()
+        assert g.user is None
+
+    def test_user_set_via_constructor(self):
+        g = Gallery(user="Paul")
+        assert g.user == "Paul"
+
+    def test_user_is_mutable_after_init(self, tmp_gallery):
+        g = Gallery(backend=FileSystemBackend(tmp_gallery))
+        g.user = "Alice"
+        assert g.user == "Alice"
+
+    def test_save_script_falls_back_to_user_when_no_author(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend, user="Paul")
+        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        g.save_script(None, "20240101", sections, author=None)
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest)
+        assert "# Saved by: Paul" in saved.to_text()
+
+    def test_explicit_author_overrides_registered_user(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend, user="Paul")
+        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        g.save_script(None, "20240101", sections, author="Alice")
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest)
+        assert "# Saved by: Alice" in saved.to_text()
+        assert "Paul" not in saved.to_text()
+
+    def test_blank_author_falls_back_to_user(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend, user="Paul")
+        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        g.save_script(None, "20240101", sections, author="   ")  # whitespace only
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest)
+        assert "# Saved by: Paul" in saved.to_text()
+
+    def test_no_user_no_author_no_stamp(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)  # no user
+        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        g.save_script(None, "20240101", sections, author=None)
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest)
+        # No author at all → no "Saved by" line
+        assert "# Saved by:" not in saved.to_text()
+
+    def test_layout_contains_current_user_store(self, tmp_gallery):
+        g = Gallery(backend=FileSystemBackend(tmp_gallery), user="Paul")
+        layout_str = str(g.app.layout)
+        assert "gv-current-user" in layout_str
+
+    def test_user_runtime_change_affects_subsequent_saves(self, tmp_gallery):
+        """Setting g.user after init affects subsequent saves (single-user mode)."""
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend, user="Paul")
+        s1 = ScriptSections(configurator='x: int = 1', code="print(1)")
+        s2 = ScriptSections(configurator='x: int = 2', code="print(2)")
+        g.save_script(None, "20240101", s1)  # → Paul
+        g.user = "Alice"
+        g.save_script(None, "20240101", s2)  # → Alice
+        versions = g.list_versions(None, "20240101")
+        last_two = versions[-2:]
+        saved_a = backend.load_script("20240101", last_two[0]).to_text()
+        saved_b = backend.load_script("20240101", last_two[1]).to_text()
+        assert "Paul" in saved_a
+        assert "Alice" in saved_b
+
+
+# ---------------------------------------------------------------------------
 # apply_params_to_script — bake form values into a script's configurator
 # ---------------------------------------------------------------------------
 

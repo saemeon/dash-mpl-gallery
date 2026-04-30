@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -271,6 +272,7 @@ class Gallery:
         export_fn: Callable[[bytes], bytes] | None = None,
         extra_controls: Any = None,
         config_path: str | Path | None = None,
+        user: str | None = None,
     ):
         if backends is not None:
             self.backends = backends
@@ -284,9 +286,25 @@ class Gallery:
         self.theme = theme or dbc.themes.SLATE
         self.export_fn = export_fn
         self.extra_controls = extra_controls
-        self._multi = len(self.backends) > 1
+        self.user = user
+        """Default username for save metadata. Seeds the per-session
+        ``gv-current-user`` Store at app build time. For multi-user
+        deployments, override the Store via a Dash callback (e.g. from
+        a login flow) — sessions are isolated; no process-wide leakage."""
 
         self._app: dash.Dash | None = None
+
+    # -- Pure views of in-memory state --------------------------------------
+
+    @property
+    def plot_names(self) -> list[str]:
+        """Names of all configured plots (backend keys), in insertion order."""
+        return list(self.backends.keys())
+
+    @property
+    def is_multi(self) -> bool:
+        """True when the gallery has more than one configured backend."""
+        return len(self.backends) > 1
 
     @classmethod
     def from_config(
@@ -705,6 +723,24 @@ class Gallery:
                                                     placeholder="e.g. Alice",
                                                     size="sm",
                                                 ),
+                                                dbc.Label(
+                                                    "What changed? (optional)",
+                                                    style={
+                                                        "fontSize": "12px",
+                                                        "marginTop": "8px",
+                                                    },
+                                                ),
+                                                dbc.Textarea(
+                                                    id="gv-save-description",
+                                                    placeholder=(
+                                                        "Why this version exists — "
+                                                        "e.g. switched to log scale "
+                                                        "because small categories "
+                                                        "were buried."
+                                                    ),
+                                                    rows=3,
+                                                    style={"fontSize": "12px"},
+                                                ),
                                             ]
                                         ),
                                         dbc.ModalFooter(
@@ -785,6 +821,14 @@ class Gallery:
                 dcc.Store(id="gv-plot-bytes-store"),
                 # Track the last-loaded script text for dirty detection
                 dcc.Store(id="gv-clean-script-store"),
+                # Per-session current user — seeded from Gallery(user=...) at
+                # init. Multi-user deployments override via a login callback:
+                #     Output("gv-current-user", "data") <- logged_in_username
+                dcc.Store(
+                    id="gv-current-user",
+                    storage_type="session",
+                    data=self.user,
+                ),
                 dcc.ConfirmDialog(
                     id="gv-confirm-navigate",
                     message="You have unsaved changes. Continue without saving?",
@@ -818,14 +862,26 @@ class Gallery:
         date: str,
         sections: ScriptSections,
         author: str | None = None,
+        description: str | None = None,
     ) -> str:
         """Persist *sections* for *date* under *plot_name*'s backend.
 
-        Applies ``with_author`` when *author* is given.  Returns the new
-        version string.  Usable without a browser.
+        Stamps metadata at the top of the script:
+        - ``# Saved by:`` from *author* (falls back to ``self.user``)
+        - ``# Description:`` from *description* (free-form rationale)
+
+        Returns the new version string.  Usable without a browser.
         """
+        if not (author and author.strip()):
+            author = self.user
+        meta: dict[str, str] = {}
         if author and author.strip():
-            sections = sections.with_author(author.strip())
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            meta["Saved by"] = f"{author.strip()} ({timestamp})"
+        if description and description.strip():
+            meta["Description"] = description.strip()
+        if meta:
+            sections = sections.with_metadata(meta)
         return self._get_backend(plot_name).save_version(date, sections)
 
     def list_dates(self, plot_name: str | None = None) -> list[str]:
@@ -927,10 +983,6 @@ class Gallery:
         if plot_name and plot_name in self.backends:
             return self.backends[plot_name]
         return next(iter(self.backends.values()))
-
-    def _build_plot_names(self) -> list[str]:
-        """Return current plot names."""
-        return list(self.backends.keys())
 
     # ------------------------------------------------------------------
     # Callbacks
@@ -1124,6 +1176,21 @@ class Gallery:
                 return True
             return False
 
+        # -- SAVE: step 1.5 — pre-fill author from current-user store --
+        # Fires when the modal opens; if a user is registered (single-user
+        # via Gallery(user=...) or multi-user via login callback), pre-fill
+        # the author field. The user can still override before submitting.
+        @app.callback(
+            Output("gv-save-author", "value"),
+            Input("gv-save-modal", "is_open"),
+            State("gv-current-user", "data"),
+            prevent_initial_call=True,
+        )
+        def prefill_author_from_user(is_open, current_user):
+            if is_open and current_user:
+                return current_user
+            return dash.no_update
+
         # -- SAVE: step 2 — actual save + refresh gallery --
         @app.callback(
             Output("gv-console", "children", allow_duplicate=True),
@@ -1141,9 +1208,13 @@ class Gallery:
             State("gv-plot-select", "data"),
             State("gv-date", "value"),
             State("gv-save-author", "value"),
+            State("gv-save-description", "value"),
             prevent_initial_call=True,
         )
-        def save_version(n_clicks, script_code, param_values, plot_name, selected_date, author):
+        def save_version(
+            n_clicks, script_code, param_values, plot_name,
+            selected_date, author, description,
+        ):
             if not script_code:
                 return (
                     "Nothing to save.",
@@ -1156,7 +1227,10 @@ class Gallery:
             save_date = selected_date or _date.today().strftime("%Y%m%d")
             sections = self.apply_params_to_script(script_code, param_values)
 
-            new_version = self.save_script(plot_name, save_date, sections, author=author)
+            new_version = self.save_script(
+                plot_name, save_date, sections,
+                author=author, description=description,
+            )
 
             console = (
                 f"Saved v{new_version}\n"

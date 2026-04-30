@@ -141,18 +141,55 @@ class ScriptSections:
         )
 
     def with_author(self, author: str) -> ScriptSections:
-        """Return a copy with a '# Saved by: ...' comment prepended to the configurator."""
+        """Return a copy with a '# Saved by: ...' comment prepended to the configurator.
+
+        Equivalent to ``self.with_metadata({"Saved by": f"{author} ({timestamp})"})``.
+        Kept for backwards compatibility — new code should prefer
+        :meth:`with_metadata`, which handles multiple keys and multi-line values.
+        """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        comment = f"# Saved by: {author} ({timestamp})"
+        return self.with_metadata({"Saved by": f"{author} ({timestamp})"})
+
+    def with_metadata(self, metadata: dict[str, str]) -> ScriptSections:
+        """Return a copy with metadata stamped as ``# Key: Value`` comments.
+
+        Comments are prepended to the configurator section (or to code, if
+        configurator is empty), preserving the flat-file principle: anyone
+        reading the saved ``.py`` directly sees the metadata at the top.
+
+        Multi-line values are stamped as::
+
+            # Key:
+            #   line 1
+            #   line 2
+
+        Empty values are skipped (the key is omitted entirely).  Insertion
+        order of *metadata* is preserved.
+        """
+        lines: list[str] = []
+        for key, value in metadata.items():
+            if value is None or value == "":
+                continue
+            value_str = str(value)
+            if "\n" in value_str:
+                lines.append(f"# {key}:")
+                lines.extend(f"#   {line}" for line in value_str.splitlines())
+            else:
+                lines.append(f"# {key}: {value_str}")
+        if not lines:
+            return ScriptSections(
+                configurator=self.configurator, code=self.code, save=self.save
+            )
+        block = "\n".join(lines)
         if self.configurator:
             return ScriptSections(
-                configurator=comment + "\n" + self.configurator,
+                configurator=block + "\n" + self.configurator,
                 code=self.code,
                 save=self.save,
             )
         return ScriptSections(
             configurator=self.configurator,
-            code=comment + "\n" + self.code,
+            code=block + "\n" + self.code,
             save=self.save,
         )
 
