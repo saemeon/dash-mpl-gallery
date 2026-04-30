@@ -998,7 +998,7 @@ class Gallery:
             Input("gv-sidebar-collapsed", "data"),
         )
         def render_sidebar(_, search, active_plot, collapsed):
-            names = self._build_plot_names()
+            names = self.plot_names
             if search and search.strip():
                 q = search.lower()
                 names = [n for n in names if q in n.lower()]
@@ -1247,7 +1247,7 @@ class Gallery:
             return (
                 console,
                 _plot_img(plot_bytes),
-                self._build_plot_names(),
+                self.plot_names,
                 date_opts,
                 save_date,
                 ver_opts,
@@ -1439,10 +1439,10 @@ class Gallery:
 
                 # Register new backend
                 self.backends[name] = FileSystemBackend(plot_path)
-                self._multi = len(self.backends) > 1
+                # is_multi is now a @property — re-derives automatically
 
                 # Trigger sidebar rebuild by updating gallery-items
-                return f"Created '{name}'", name, self._build_plot_names()
+                return f"Created '{name}'", name, self.plot_names
 
 
 # ---------------------------------------------------------------------------

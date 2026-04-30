@@ -55,7 +55,7 @@ class TestGalleryInit:
         b2 = FileSystemBackend(tmp_path)
         g = Gallery(backends={"alpha": b1, "beta": b2})
         assert list(g.backends.keys()) == ["alpha", "beta"]
-        assert g._multi is True
+        assert g.is_multi is True
 
     def test_custom_title(self):
         g = Gallery(title="My Custom Gallery")
@@ -609,11 +609,19 @@ class TestGetBackend:
         assert g._get_backend("nonexistent") is b1
         assert g._get_backend(None) is b1
 
-    def test_build_plot_names(self, tmp_path):
+    def test_plot_names_property(self, tmp_path):
         b1 = FileSystemBackend(tmp_path)
         b2 = FileSystemBackend(tmp_path)
         g = Gallery(backends={"x": b1, "y": b2})
-        assert g._build_plot_names() == ["x", "y"]
+        assert g.plot_names == ["x", "y"]
+
+    def test_is_multi_re_derives_after_backend_added(self, tmp_path):
+        """is_multi was a frozen attribute; now a property that re-derives."""
+        b1 = FileSystemBackend(tmp_path)
+        g = Gallery(backend=b1)
+        assert g.is_multi is False
+        g.backends["new"] = FileSystemBackend(tmp_path)
+        assert g.is_multi is True
 
 
 # ---------------------------------------------------------------------------
