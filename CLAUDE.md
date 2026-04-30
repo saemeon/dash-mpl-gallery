@@ -1,8 +1,15 @@
-# dash-mpl-gallery
+# dash-script-gallery
 
-A Dash dashboard for **versioned, scripted matplotlib charts** — built so that
-the chart, its source script, its data, and its history all live as plain files
-that any human or pipeline can inspect.
+A Dash dashboard for **versioned, scripted charts and scripts in general** —
+built so that the chart, its source script, its data, and its history all live
+as plain files that any human or pipeline can inspect.
+
+The architecture is framework-neutral: nothing in `Gallery`, `StorageBackend`,
+`ScriptSections`, the versioning model, or the output-rendering layer assumes
+a particular plotting library. The package ships an **mpl starter template**
+(opinionated default that imports matplotlib), but the starter is overridable
+via `FileSystemBackend(starter_template_fn=...)` — Plotly, Altair, or any
+script that emits PNG / JSON / CSV works today.
 
 This file documents the *identity* of the tool, the *user stories* that drive
 its design, and the *near-term roadmap*. For workspace-level architecture
@@ -139,6 +146,21 @@ ways that survive even after the gallery is gone.
 
 **Cost:** ~1 day. Medium-risk: needs a stable convention for the frontmatter
 shape so downstream consumers can parse it.
+
+### D. Generic framing — drop the implicit "mpl-only" assumption
+**Why:** The package is already framework-neutral; the docs/name don't say so.
+A user evaluating it for plotly or altair shouldn't have to read the source to
+realise it works.
+
+**Shape:**
+- README + module docstring: state up front "ships with mpl starter; works
+  with any chart library that emits PNG/JSON/CSV from a script."
+- Optional: rename to `dash-script-gallery` (or similar) — non-trivial
+  (PyPI / imports), evaluate when timing is right.
+- Optional: ship a couple of alternative starter templates (`plotly`,
+  `blank`) selectable via `Gallery(starter_kind=...)`.
+
+**Cost:** ~1 hour for the docs reframe; rename is bigger.  Decide later.
 
 ### C. Current-user registration
 **Why:** small but high-quality-of-life. Makes the Author field auto-fill so

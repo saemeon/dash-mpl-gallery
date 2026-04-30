@@ -1,10 +1,10 @@
-site_name: dash-mpl-gallery
+site_name: dash-script-gallery
 site_description: Configurable versioned script gallery dashboard for Dash
 site_author: Simon Niederberger
-site_url: https://saemeon.github.io/dash-mpl-gallery/
+site_url: https://saemeon.github.io/dash-script-gallery/
 
-repo_url: https://github.com/saemeon/dash-mpl-gallery
-repo_name: saemeon/dash-mpl-gallery
+repo_url: https://github.com/saemeon/dash-script-gallery
+repo_name: saemeon/dash-script-gallery
 
 copyright: "Copyright &copy; 2026 Simon Niederberger"
 
@@ -111,4 +111,4 @@ extra:
     default: latest
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/saemeon/dash-mpl-gallery
+      link: https://github.com/saemeon/dash-script-gallery

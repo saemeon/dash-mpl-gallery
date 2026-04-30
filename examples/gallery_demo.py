@@ -2,7 +2,7 @@
 
 Usage:
     # First generate demo data (uses the old demo_setup):
-    cd ../corpframe-gallery && python demo_setup.py && cd ../dash-mpl-gallery
+    cd ../corpframe-gallery && python demo_setup.py && cd ../dash-script-gallery
 
     # Then run:
     uv run python examples/gallery_demo.py

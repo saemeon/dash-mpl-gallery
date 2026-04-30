@@ -25,8 +25,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/saemeon/dash-mpl-gallery"
-Repository = "https://github.com/saemeon/dash-mpl-gallery"
+Homepage = "https://github.com/saemeon/dash-script-gallery"
+Repository = "https://github.com/saemeon/dash-script-gallery"
 
 [dependency-groups]
 test = ["pytest", "pytest-cov", "matplotlib"]

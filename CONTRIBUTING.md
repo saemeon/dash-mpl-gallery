@@ -1,12 +1,12 @@
 # Contributing
 
-Bug reports, feature requests, and pull requests are welcome on [GitHub](https://github.com/saemeon/dash-mpl-gallery/issues).
+Bug reports, feature requests, and pull requests are welcome on [GitHub](https://github.com/saemeon/dash-script-gallery/issues).
 
 ## Development setup
 
 ```bash
-git clone https://github.com/saemeon/dash-mpl-gallery
-cd dash-mpl-gallery
+git clone https://github.com/saemeon/dash-script-gallery
+cd dash-script-gallery
 uv sync --group dev
 ```
 
