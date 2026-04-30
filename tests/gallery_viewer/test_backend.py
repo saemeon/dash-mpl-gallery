@@ -48,14 +48,6 @@ class TestScriptSections:
         assert s.configurator == 'title: str = "hi"'
         assert s.code == "print(title)"
 
-    def test_from_text_legacy_markers(self):
-        text = "# === LOAD ===\nload code\n\n# === PLOT ===\nplot code\n\n# === SAVE ===\nsave code\n"
-        s = ScriptSections.from_text(text)
-        assert "load code" in s.code
-        assert "plot code" in s.code
-        assert "save code" in s.save
-        assert s.configurator == ""
-
     def test_from_text_without_markers(self):
         s = ScriptSections.from_text("just some code")
         assert s.configurator == ""
@@ -88,6 +80,146 @@ class TestScriptSections:
         s = ScriptSections(configurator='title: str = "x"', code="pass")
         result = s.with_params({})
         assert result is s
+
+    # -- New schema: docstring + METADATA section + tags --------------------
+
+    def test_parse_metadata_block(self):
+        text = (
+            "# === METADATA ===\n"
+            "# author: Alice\n"
+            "# saved: 2026-04-29 14:32\n"
+            "# change: switched to log scale\n"
+            "# tag: published\n"
+            "# tag: final\n"
+            "# data_hash: sha256:abc\n"
+            "\n"
+            "# === CODE ===\n"
+            "print(1)\n"
+        )
+        s = ScriptSections.from_text(text)
+        assert s.metadata == {
+            "author": "Alice",
+            "saved": "2026-04-29 14:32",
+            "change": "switched to log scale",
+            "data_hash": "sha256:abc",
+        }
+        assert s.tags == ["published", "final"]
+        assert s.code == "print(1)"
+
+    def test_parse_module_docstring(self):
+        text = (
+            '"""Quarterly Revenue.\n\n'
+            "Tracks actuals vs target, by quarter.\n"
+            '"""\n'
+            "# === CODE ===\n"
+            "print(1)\n"
+        )
+        s = ScriptSections.from_text(text)
+        assert "Quarterly Revenue." in s.docstring
+        assert "by quarter." in s.docstring
+        assert s.code == "print(1)"
+
+    def test_parse_single_quote_docstring(self):
+        # Triple-single-quote docstrings should also be recognised.
+        text = "'''Plot title.'''\n# === CODE ===\nprint(1)\n"
+        s = ScriptSections.from_text(text)
+        assert s.docstring == "Plot title."
+
+    def test_roundtrip_with_metadata_and_docstring(self):
+        original = ScriptSections(
+            docstring="Plot description.\n\nMore prose.",
+            metadata={"author": "Alice", "saved": "2026-04-29 14:32"},
+            tags=["published"],
+            configurator="x: int = 1",
+            code="print(x)",
+            save="save_artifact()",
+        )
+        restored = ScriptSections.from_text(original.to_text())
+        assert restored.docstring == original.docstring
+        assert restored.metadata == original.metadata
+        assert restored.tags == original.tags
+        assert restored.configurator == original.configurator
+        assert restored.code == original.code
+        assert restored.save == original.save
+
+    def test_roundtrip_no_metadata_no_docstring(self):
+        # If neither is present, to_text shouldn't emit the corresponding
+        # markers and re-parsing should give back identical sections.
+        original = ScriptSections(configurator="x: int = 1", code="print(x)")
+        text = original.to_text()
+        assert "# === METADATA ===" not in text
+        assert '"""' not in text
+        restored = ScriptSections.from_text(text)
+        assert restored.docstring == ""
+        assert restored.metadata == {}
+        assert restored.tags == []
+        assert restored.configurator == original.configurator
+        assert restored.code == original.code
+
+    def test_metadata_multi_line_value_indented(self):
+        # Multi-line values use the indented continuation scheme.
+        text = (
+            "# === METADATA ===\n"
+            "# change:\n"
+            "#   line one\n"
+            "#   line two\n"
+            "# author: Alice\n"
+            "\n# === CODE ===\nprint(1)\n"
+        )
+        s = ScriptSections.from_text(text)
+        assert s.metadata["change"] == "line one\nline two"
+        assert s.metadata["author"] == "Alice"
+
+    def test_metadata_multi_line_value_round_trip(self):
+        original = ScriptSections(
+            metadata={"change": "line one\nline two\nline three"},
+            code="print(1)",
+        )
+        restored = ScriptSections.from_text(original.to_text())
+        assert restored.metadata["change"] == "line one\nline two\nline three"
+
+    def test_with_tags_appends_uniquely(self):
+        s = ScriptSections(code="pass", tags=["draft"])
+        result = s.with_tags(["published", "draft", "final"])
+        # 'draft' is already there — added tags de-duplicate
+        assert result.tags == ["draft", "published", "final"]
+
+    def test_with_tags_replace_overrides(self):
+        s = ScriptSections(code="pass", tags=["draft", "wip"])
+        result = s.with_tags(["published"], replace=True)
+        assert result.tags == ["published"]
+
+    def test_with_tags_strips_whitespace_and_skips_empty(self):
+        s = ScriptSections(code="pass")
+        result = s.with_tags([" published ", "", "final"])
+        assert result.tags == ["published", "final"]
+
+    def test_with_metadata_routes_tag_key_to_tags(self):
+        # Using 'tag' as a key in with_metadata should land in .tags, not metadata.
+        s = ScriptSections(code="pass")
+        result = s.with_metadata({"tag": "published", "author": "Alice"})
+        assert result.tags == ["published"]
+        assert "tag" not in result.metadata
+        assert result.metadata["author"] == "Alice"
+
+    def test_with_docstring(self):
+        s = ScriptSections(code="pass")
+        result = s.with_docstring("Plot title.")
+        assert result.docstring == "Plot title."
+        # Round-trips correctly
+        restored = ScriptSections.from_text(result.to_text())
+        assert restored.docstring == "Plot title."
+
+    def test_metadata_block_renders_tags_one_per_line(self):
+        s = ScriptSections(
+            tags=["published", "final"],
+            code="pass",
+        )
+        text = s.to_text()
+        # Tags are emitted as one '# tag: <name>' line each.
+        assert text.count("# tag:") == 2
+        assert "# tag: published" in text
+        assert "# tag: final" in text
 
 
 # ---------------------------------------------------------------------------

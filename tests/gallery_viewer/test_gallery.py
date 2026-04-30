@@ -508,14 +508,20 @@ class TestAuthorMetadata:
             configurator='title: str = "test"', code="print('hi')"
         )
         result = sections.with_author("Alice")
-        assert "# Saved by: Alice" in result.configurator
+        # author + saved land in the metadata dict, not in configurator/code
+        assert result.metadata["author"] == "Alice"
+        assert "saved" in result.metadata
+        assert result.configurator == sections.configurator
         assert result.code == sections.code
+        # And they surface in the rendered METADATA block
+        assert "# author: Alice" in result.to_text()
 
     def test_add_author_comment_no_configurator(self):
         sections = ScriptSections(code="print('hi')")
         result = sections.with_author("Bob")
-        assert "# Saved by: Bob" in result.code
+        assert result.metadata["author"] == "Bob"
         assert result.configurator == ""
+        assert "# author: Bob" in result.to_text()
 
 
 # ---------------------------------------------------------------------------
@@ -759,7 +765,7 @@ class TestHeadlessAPI:
         new_version = g.save_script(None, "20240101", sections, author="Alice")
         assert new_version == "2"  # fixture already has v1
         saved = backend.load_script("20240101", new_version)
-        assert "# Saved by: Alice" in saved.to_text()
+        assert "# author: Alice" in saved.to_text()
         assert "headless" in saved.configurator
 
 
@@ -859,8 +865,8 @@ class TestProvenance:
         g.save_script(None, "20240101", ScriptSections(code="print(1)"))
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
-        # e.g. "# Python: 3.14.4"
-        assert "# Python: " in saved
+        # e.g. "# python: 3.14.4"
+        assert "# python: " in saved
         import sys
         assert f"{sys.version_info.major}.{sys.version_info.minor}" in saved
 
@@ -872,7 +878,7 @@ class TestProvenance:
         g.save_script(None, "20240101", ScriptSections(code="print(1)"))
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
-        assert "# Data hash: sha256:" in saved
+        assert "# data_hash: sha256:" in saved
 
     def test_data_hash_omitted_when_no_data_file(self, tmp_path):
         from gallery_viewer._types import ScriptSections
@@ -885,9 +891,9 @@ class TestProvenance:
         g.save_script(None, "20240101", ScriptSections(code="print(1)"))
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
-        assert "# Data hash:" not in saved
+        assert "# data_hash:" not in saved
         # but Python version still present
-        assert "# Python: " in saved
+        assert "# python: " in saved
 
     def test_data_hash_is_deterministic(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
@@ -950,28 +956,29 @@ class TestProvenance:
         """The internal helper returns the dict directly — useful for unit tests."""
         g = Gallery(backend=FileSystemBackend(tmp_gallery), track_packages=["pandas"])
         meta = g._provenance_metadata(None, "20240101")
-        assert "Python" in meta
-        assert "Data hash" in meta
+        assert "python" in meta
+        assert "data_hash" in meta
         assert "pandas" in meta
-        assert meta["Data hash"].startswith("sha256:")
+        assert meta["data_hash"].startswith("sha256:")
 
     def test_full_metadata_block_order(self, tmp_gallery):
-        """The stamped block order is: Saved by → Description → Provenance."""
+        """The stamped block order is: author → saved → change → provenance."""
         from gallery_viewer._types import ScriptSections
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
         g.save_script(
             None, "20240101", ScriptSections(code="print(1)"),
-            author="Alice", description="why",
+            author="Alice", change_note="why",
         )
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
-        # Order check
-        idx_author = saved.index("# Saved by:")
-        idx_desc = saved.index("# Description:")
-        idx_python = saved.index("# Python:")
-        assert idx_author < idx_desc < idx_python
+        # Order check: human-facing fields, then provenance.
+        idx_author = saved.index("# author:")
+        idx_saved = saved.index("# saved:")
+        idx_change = saved.index("# change:")
+        idx_python = saved.index("# python:")
+        assert idx_author < idx_saved < idx_change < idx_python
 
 
 # ---------------------------------------------------------------------------
@@ -989,12 +996,12 @@ class TestIntentCapture:
         g.save_script(
             None, "20240101", sections,
             author="Alice",
-            description="Switched to log scale because small categories were buried.",
+            change_note="Switched to log scale because small categories were buried.",
         )
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
-        assert "# Description: Switched to log scale" in saved
-        assert "# Saved by: Alice" in saved
+        assert "# change: Switched to log scale" in saved
+        assert "# author: Alice" in saved
 
     def test_multiline_description_indented(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
@@ -1005,11 +1012,11 @@ class TestIntentCapture:
         g.save_script(
             None, "20240101", sections,
             author="A",
-            description="line one\nline two\nline three",
+            change_note="line one\nline two\nline three",
         )
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
-        assert "# Description:" in saved
+        assert "# change:" in saved
         assert "#   line one" in saved
         assert "#   line two" in saved
         assert "#   line three" in saved
@@ -1023,7 +1030,7 @@ class TestIntentCapture:
         g.save_script(None, "20240101", sections, author="A")
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
-        assert "# Description" not in saved
+        assert "# change" not in saved
 
     def test_blank_description_skipped(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
@@ -1031,10 +1038,10 @@ class TestIntentCapture:
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
         sections = ScriptSections(configurator='x: int = 1', code="print(1)")
-        g.save_script(None, "20240101", sections, author="A", description="   ")
+        g.save_script(None, "20240101", sections, author="A", change_note="   ")
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
-        assert "# Description" not in saved
+        assert "# change" not in saved
 
     def test_description_without_author_works(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
@@ -1042,38 +1049,40 @@ class TestIntentCapture:
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
         sections = ScriptSections(configurator='x: int = 1', code="print(1)")
-        g.save_script(None, "20240101", sections, description="why this version")
+        g.save_script(None, "20240101", sections, change_note="why this version")
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
-        assert "# Description: why this version" in saved
-        assert "# Saved by:" not in saved
+        assert "# change: why this version" in saved
+        assert "# author:" not in saved
 
     def test_with_metadata_preserves_order(self):
         from gallery_viewer._types import ScriptSections
 
         s = ScriptSections(configurator='x: int = 1', code="print(1)")
-        result = s.with_metadata({"First": "a", "Second": "b", "Third": "c"})
-        text = result.configurator
-        # Stamped lines appear in dict order
-        first_idx = text.index("# First:")
-        second_idx = text.index("# Second:")
-        third_idx = text.index("# Third:")
+        result = s.with_metadata({"first": "a", "second": "b", "third": "c"})
+        # Insertion order preserved in the metadata dict and in the rendered text
+        assert list(result.metadata.keys()) == ["first", "second", "third"]
+        text = result.to_text()
+        first_idx = text.index("# first:")
+        second_idx = text.index("# second:")
+        third_idx = text.index("# third:")
         assert first_idx < second_idx < third_idx
 
     def test_with_metadata_empty_values_skipped(self):
         from gallery_viewer._types import ScriptSections
 
         s = ScriptSections(configurator='x: int = 1', code="print(1)")
-        result = s.with_metadata({"Skip": "", "Keep": "value", "AlsoSkip": None})
-        assert "# Skip" not in result.configurator
-        assert "# Keep: value" in result.configurator
-        assert "# AlsoSkip" not in result.configurator
+        result = s.with_metadata({"skip": "", "keep": "value", "also_skip": None})
+        assert "skip" not in result.metadata
+        assert "also_skip" not in result.metadata
+        assert result.metadata["keep"] == "value"
 
     def test_with_metadata_empty_dict_returns_unchanged(self):
         from gallery_viewer._types import ScriptSections
 
         s = ScriptSections(configurator='x: int = 1', code="print(1)")
         result = s.with_metadata({})
+        assert result.metadata == {}
         assert result.configurator == s.configurator
         assert result.code == s.code
 
@@ -1081,6 +1090,40 @@ class TestIntentCapture:
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
         layout_str = str(g.app.layout)
         assert "gv-save-description" in layout_str
+
+    def test_change_note_facade_returns_value(self, tmp_gallery):
+        """Gallery.change_note(...) returns the persisted change rationale."""
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        g.save_script(
+            None, "20240101", ScriptSections(code="print(1)"),
+            author="Alice", change_note="why this version exists",
+        )
+        latest = g.list_versions(None, "20240101")[-1]
+        assert g.change_note(None, "20240101", latest) == "why this version exists"
+
+    def test_change_note_facade_returns_none_when_absent(self, tmp_gallery):
+        """No change note → facade returns None (not '')."""
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        g.save_script(None, "20240101", ScriptSections(code="print(1)"), author="A")
+        latest = g.list_versions(None, "20240101")[-1]
+        assert g.change_note(None, "20240101", latest) is None
+
+    def test_author_facade_returns_value(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        g.save_script(
+            None, "20240101", ScriptSections(code="print(1)"), author="Alice"
+        )
+        latest = g.list_versions(None, "20240101")[-1]
+        assert g.author(None, "20240101", latest) == "Alice"
 
 
 # ---------------------------------------------------------------------------
@@ -1111,7 +1154,7 @@ class TestUserRegistration:
         g.save_script(None, "20240101", sections, author=None)
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
-        assert "# Saved by: Paul" in saved.to_text()
+        assert "# author: Paul" in saved.to_text()
 
     def test_explicit_author_overrides_registered_user(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
@@ -1122,7 +1165,7 @@ class TestUserRegistration:
         g.save_script(None, "20240101", sections, author="Alice")
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
-        assert "# Saved by: Alice" in saved.to_text()
+        assert "# author: Alice" in saved.to_text()
         assert "Paul" not in saved.to_text()
 
     def test_blank_author_falls_back_to_user(self, tmp_gallery):
@@ -1134,7 +1177,7 @@ class TestUserRegistration:
         g.save_script(None, "20240101", sections, author="   ")  # whitespace only
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
-        assert "# Saved by: Paul" in saved.to_text()
+        assert "# author: Paul" in saved.to_text()
 
     def test_no_user_no_author_no_stamp(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
@@ -1146,7 +1189,7 @@ class TestUserRegistration:
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
         # No author at all → no "Saved by" line
-        assert "# Saved by:" not in saved.to_text()
+        assert "# author:" not in saved.to_text()
 
     def test_layout_contains_current_user_store(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery), user="Paul")

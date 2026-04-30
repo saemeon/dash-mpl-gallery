@@ -1,5 +1,8 @@
+# === METADATA ===
+# author: SINIE
+# saved: 2026-04-29 08:06
+
 # === CONFIGURATOR ===
-# Saved by: SINIE (2026-04-29 08:06)
 title: str = "CPI Inflatas"
 show_core: bool = True
 smoothing: int = 1

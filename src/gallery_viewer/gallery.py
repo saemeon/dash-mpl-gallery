@@ -868,12 +868,15 @@ class Gallery:
         """Build the provenance metadata dict for stamping at save time.
 
         Always includes:
-            * ``Data hash`` — sha256 of the data file (if the backend has one)
-            * ``Python`` — running interpreter version
+            * ``data_hash`` — sha256 of the data file (if the backend has one)
+            * ``python`` — running interpreter version
 
         Plus, for every name in :attr:`track_packages` that is importable, a
         ``<package>`` entry with its installed version (resolved via
         :func:`importlib.metadata.version`).
+
+        All keys are lowercase / snake_case to match the rest of the
+        ``# === METADATA ===`` block.
         """
         import sys
         from importlib.metadata import PackageNotFoundError, version as _pkg_version
@@ -882,9 +885,9 @@ class Gallery:
 
         data_hash = self._get_backend(plot_name).data_hash(date)
         if data_hash:
-            meta["Data hash"] = data_hash
+            meta["data_hash"] = data_hash
 
-        meta["Python"] = (
+        meta["python"] = (
             f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
         )
 
@@ -904,13 +907,17 @@ class Gallery:
         date: str,
         sections: ScriptSections,
         author: str | None = None,
-        description: str | None = None,
+        change_note: str | None = None,
     ) -> str:
         """Persist *sections* for *date* under *plot_name*'s backend.
 
-        Stamps metadata at the top of the script:
-        - ``# Saved by:`` from *author* (falls back to ``self.user``)
-        - ``# Description:`` from *description* (free-form rationale)
+        Stamps a ``# === METADATA ===`` block at the top of the script:
+
+        - ``author`` — from *author* (falls back to ``self.user``)
+        - ``saved`` — current timestamp
+        - ``change`` — from *change_note* (free-form rationale: "what changed
+          in this version?")
+        - provenance keys — data hash, Python + tracked package versions
 
         Returns the new version string.  Usable without a browser.
         """
@@ -918,10 +925,10 @@ class Gallery:
             author = self.user
         meta: dict[str, str] = {}
         if author and author.strip():
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            meta["Saved by"] = f"{author.strip()} ({timestamp})"
-        if description and description.strip():
-            meta["Description"] = description.strip()
+            meta["author"] = author.strip()
+            meta["saved"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        if change_note and change_note.strip():
+            meta["change"] = change_note.strip()
         # Provenance: data hash, Python version, tracked package versions.
         # Stamped after the human-facing fields so the file reads top-down:
         # who, why, then what-environment.
@@ -1019,6 +1026,25 @@ class Gallery:
         if not diff:
             return (f"v{version} — no parameter changes from v{prev_version}", "#777")
         return (f"v{version} — " + ", ".join(diff), "#8cb4d5")
+
+    def change_note(
+        self, plot_name: str | None, date: str, version: str
+    ) -> str | None:
+        """Return the ``change`` metadata field for *version*, if any.
+
+        This is the per-version "what changed in this save?" rationale (the
+        intent-capture field surfaced in the Save modal as
+        ``gv-save-description``).  Returns ``None`` when the script has no
+        change note (e.g. v1, or a version saved without one).
+        """
+        sections = self.load_script(plot_name, date, version)
+        note = sections.metadata.get("change")
+        return note or None
+
+    def author(self, plot_name: str | None, date: str, version: str) -> str | None:
+        """Return the ``author`` metadata field for *version*, if any."""
+        sections = self.load_script(plot_name, date, version)
+        return sections.metadata.get("author") or None
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1259,7 +1285,7 @@ class Gallery:
         )
         def save_version(
             n_clicks, script_code, param_values, plot_name,
-            selected_date, author, description,
+            selected_date, author, change_note,
         ):
             if not script_code:
                 return (
@@ -1275,7 +1301,7 @@ class Gallery:
 
             new_version = self.save_script(
                 plot_name, save_date, sections,
-                author=author, description=description,
+                author=author, change_note=change_note,
             )
 
             console = (
@@ -1339,7 +1365,7 @@ class Gallery:
                 return {"display": "block"}
             return {"display": "none"}
 
-        # -- Feature 2: Version diff label --
+        # -- Feature 2: Version diff label + change note --
         @app.callback(
             Output("gv-version-diff", "children"),
             Input("gv-version", "value"),
@@ -1350,7 +1376,37 @@ class Gallery:
             if not date or not version:
                 return ""
             text, color = self.version_diff_label(plot_name, date, version)
-            return html.Span(text, style={"color": color})
+            note = self.change_note(plot_name, date, version)
+            author = self.author(plot_name, date, version)
+            children = [html.Div(text, style={"color": color})]
+            # Author line — small, dim, italic. Skip if absent.
+            if author:
+                children.append(
+                    html.Div(
+                        f"by {author}",
+                        style={"color": "#666", "fontStyle": "italic"},
+                    )
+                )
+            # Change note — rendered as a quote-style block on a second line so
+            # the "what changed" rationale is visible at a glance, not buried
+            # in the script. Truncate visually via CSS but keep the full text
+            # available on hover via the title attribute.
+            if note:
+                children.append(
+                    html.Div(
+                        f"“{note}”",
+                        title=note,
+                        style={
+                            "color": "#bbb",
+                            "fontStyle": "italic",
+                            "whiteSpace": "nowrap",
+                            "overflow": "hidden",
+                            "textOverflow": "ellipsis",
+                            "maxWidth": "100%",
+                        },
+                    )
+                )
+            return children
 
         # -- Feature 3: New Date button (detect uncharted data) --
         @app.callback(
