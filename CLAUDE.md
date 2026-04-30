@@ -111,7 +111,7 @@ What the stories together imply about *missing dimensions*:
 - **Provenance** (data hash, brand version, library versions) — for #9, #11
 - **Intent capture** (why this version exists) — for #5, #6, #8, #12
 - **Diff visualization** (image diff, not just config diff) — for #6
-- **State markers** (final / draft / locked) — for #7, #10
+- **State markers** (final / draft / locked) — for #7, #10, generalized to **tags** (E)
 
 The cheapest, highest-leverage of these is **intent capture**. One free-form
 `description` field per version unlocks #5, #6, #8, and #12 with a single
@@ -186,6 +186,32 @@ local/single-user is the dominant story today.
 
 **Cost:** ~1 hour. Low-risk.
 
+### E. Tags — generalize state markers (replaces "frozen / final flag")
+**Why:** unlocks #7 (publication freeze) and the filtering need behind #8 / #10
+("which of these 47 PNGs is the canonical one?"). A free-form tag set per
+version is strictly more expressive than a single boolean — `frozen`, `final`,
+`published`, `draft`, `wip` all become tags, and the user can invent their own.
+Analogous to git tags: cheap, additive, never destructive.
+
+**Shape:**
+- Tags live in the script's frontmatter as a comment line:
+  `# tags: published, final` — flat-file principle preserved (#3).
+- Free-form strings, no enforced vocabulary, but a few are conventional and
+  surfaced in the UI: `published`, `final`, `draft`, `wip`, `frozen`.
+- `frozen` is the one tag with behavioral consequences: the UI refuses to
+  overwrite a frozen version — Save always creates a new version. Everything
+  else is purely informational / for filtering.
+- Rendered as small badges next to the version dropdown.
+- Filter chip in the version selector ("show only `published`").
+- Backend API on `Gallery` / `StorageBackend`:
+  - `list_tags(date, version) -> set[str]`
+  - `add_tag(date, version, tag) / remove_tag(...)`
+  - `versions_with_tag(date, tag) -> list[int]`
+
+**Cost:** ~1 day. Low-risk. The `frozen`-as-tag semantics need care — it's the
+only tag with side-effects, so the read-only path through the UI must check it
+in every save/edit code path.
+
 ---
 
 ## Out of scope (deliberately)
@@ -195,8 +221,6 @@ local/single-user is the dominant story today.
 - **Image diff / perceptual diff badges** (#6). Useful, but second-priority
   to intent capture, which addresses the underlying need ("what changed?")
   more cheaply.
-- **Frozen / final markers** (#7). Convention-based for now; revisit if the
-  publication workflow becomes painful.
 - **Multi-user session model.** See #C nuance above.
 
 ---
