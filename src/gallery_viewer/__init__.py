@@ -1,4 +1,10 @@
-"""gallery-viewer — configurable versioned script gallery for Dash."""
+"""gallery-viewer — configurable versioned script gallery for Dash.
+
+Framework-agnostic dashboard for browsing, editing, and executing versioned
+data visualization scripts. Ships with a matplotlib starter template; works
+with any charting library (Plotly, Altair, seaborn, etc.) that produces
+PNG/JSON/CSV from a Python script.
+"""
 
 from gallery_viewer._types import OutputItem, RunResult, ScriptSections
 from gallery_viewer.backend import FileSystemBackend, StorageBackend

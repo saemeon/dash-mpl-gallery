@@ -11,6 +11,8 @@
 
 A configurable Dash dashboard for browsing, editing, and executing versioned data visualization scripts. Designed for teams that iterate on report charts — one person writes the script, reviewers tweak parameters and save new versions.
 
+**Framework-agnostic:** Ships with a matplotlib starter template, but works with any charting library — Plotly, Altair, seaborn, or anything that produces PNG/JSON/CSV from a Python script.
+
 ## Installation
 
 ```bash
@@ -33,7 +35,7 @@ gallery.run()
 
 ## How it works
 
-Scripts are split into three sections:
+Scripts are split into sections: a configuration block of typed variables (auto-rendered as form fields), the main code (any charting library), and an optional save section.
 
 ```python
 # === CONFIGURATOR ===
@@ -42,17 +44,15 @@ show_target: bool = True         # rendered as a checkbox
 dpi: int = 150                   # rendered as a number input
 
 # === CODE ===
-import matplotlib.pyplot as plt
-fig, ax = plt.subplots()
-ax.plot(df["x"], df["y"])
-ax.set_title(title)
+import plotly.express as px  # or matplotlib, seaborn, altair, …
+fig = px.line(df, x="month", y="revenue", title=title)
 
 # === SAVE ===
-# Optional post-processing (gallery handles plot saving automatically)
+# Optional post-processing (runs only on "Save Version")
 ```
 
 - **CONFIGURATOR** — typed variable assignments auto-generate form fields. Reviewers change these without touching code.
-- **CODE** — the main script. Produces matplotlib figures, Plotly figures, DataFrames, or any combination.
+- **CODE** — the main script. Any charting library that produces figures or DataFrames works: matplotlib, Plotly, Altair, seaborn, etc.
 - **SAVE** — runs only on "Save Version". For optional post-processing (extra exports, prints).
 
 ## Multi-output support
