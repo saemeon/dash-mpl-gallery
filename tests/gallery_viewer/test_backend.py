@@ -405,6 +405,80 @@ class TestFileSystemBackend:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# FileSystemBackend edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestFileSystemBackendEdge:
+    def test_list_dates_empty_dir(self, tmp_path):
+        """list_dates on a fresh directory returns []."""
+        b = FileSystemBackend(tmp_path)
+        assert b.list_dates() == []
+
+    def test_list_versions_missing_date_returns_default(self, tmp_path):
+        """list_versions for a date with no scripts returns ['1'] as the default start."""
+        b = FileSystemBackend(tmp_path)
+        assert b.list_versions("99991231") == ["1"]
+
+    def test_list_uncharted_dates_no_data(self, tmp_path):
+        """list_uncharted_dates with no data files returns []."""
+        b = FileSystemBackend(tmp_path)
+        assert b.list_uncharted_dates() == []
+
+    def test_list_uncharted_dates_all_charted(self, tmp_gallery):
+        """list_uncharted_dates returns [] when every data date has a script."""
+        b = FileSystemBackend(tmp_gallery)
+        # fixture has data for 20240101 and 20240601, scripts for both
+        uncharted = b.list_uncharted_dates()
+        assert "20240101" not in uncharted
+        assert "20240601" not in uncharted
+
+    def test_load_artifact_missing_returns_none(self, tmp_path):
+        """load_artifact for a nonexistent file returns None, no exception."""
+        b = FileSystemBackend(tmp_path)
+        assert b.load_artifact("20991231", "9") is None
+
+
+# ---------------------------------------------------------------------------
+# export_inject_vars
+# ---------------------------------------------------------------------------
+
+
+class TestExportInjectVars:
+    def test_base_backend_returns_empty(self):
+        """StorageBackend base implementation returns {} — no filesystem paths."""
+        b = StorageBackend()
+        assert b.export_inject_vars("20240101", "1") == {}
+
+    def test_filesystem_backend_returns_base_dir(self, tmp_path):
+        """FileSystemBackend returns BASE_DIR matching its root directory."""
+        b = FileSystemBackend(tmp_path)
+        result = b.export_inject_vars("20240101", "3")
+        assert result["BASE_DIR"] == str(tmp_path)
+
+    def test_filesystem_backend_returns_output_path(self, tmp_path):
+        """FileSystemBackend OUTPUT_PATH encodes date and version."""
+        b = FileSystemBackend(tmp_path)
+        result = b.export_inject_vars("20240101", "3")
+        assert "plot_20240101_v3.png" in result["OUTPUT_PATH"]
+
+    def test_filesystem_output_path_under_artifacts_dir(self, tmp_path):
+        """OUTPUT_PATH sits inside the backend's artifacts directory."""
+        from pathlib import Path
+
+        b = FileSystemBackend(tmp_path)
+        result = b.export_inject_vars("20240601", "7")
+        assert Path(result["OUTPUT_PATH"]).parent == b.artifacts_dir
+
+    def test_path_strings_are_str_not_path(self, tmp_path):
+        """Both values must be plain strings (they get baked into source code)."""
+        b = FileSystemBackend(tmp_path)
+        result = b.export_inject_vars("20240101", "1")
+        assert isinstance(result["BASE_DIR"], str)
+        assert isinstance(result["OUTPUT_PATH"], str)
+
+
 class TestSubclassing:
     def test_override_single_method(self, tmp_gallery):
         class MyBackend(FileSystemBackend):

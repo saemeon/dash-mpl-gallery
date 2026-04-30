@@ -828,6 +828,96 @@ class Gallery:
             sections = sections.with_author(author.strip())
         return self._get_backend(plot_name).save_version(date, sections)
 
+    def list_dates(self, plot_name: str | None = None) -> list[str]:
+        """Return available dates for *plot_name*, newest first."""
+        return self._get_backend(plot_name).list_dates()
+
+    def list_versions(self, plot_name: str | None, date: str) -> list[str]:
+        """Return available versions for *date* under *plot_name*, ascending."""
+        return self._get_backend(plot_name).list_versions(date)
+
+    def load_script(self, plot_name: str | None, date: str, version: str) -> ScriptSections:
+        """Load script sections for *date*/*version* under *plot_name*."""
+        return self._get_backend(plot_name).load_script(date, version)
+
+    def load_data(self, plot_name: str | None, date: str):
+        """Load a data preview DataFrame for *date* under *plot_name*."""
+        return self._get_backend(plot_name).load_data(date)
+
+    def load_artifact(self, plot_name: str | None, date: str, version: str) -> bytes | None:
+        """Load saved artifact bytes for *date*/*version* under *plot_name*."""
+        return self._get_backend(plot_name).load_artifact(date, version)
+
+    def template_for_date(self, plot_name: str | None, date: str) -> ScriptSections:
+        """Return a starter template for *date*, seeded from the latest existing version."""
+        return self._get_backend(plot_name).template_for_date(date)
+
+    def list_uncharted_dates(self, plot_name: str | None = None) -> list[str]:
+        """Return data dates that have no scripts yet, newest first."""
+        return self._get_backend(plot_name).list_uncharted_dates()
+
+    def export_inject_vars(
+        self, plot_name: str | None, date: str, version: str
+    ) -> dict[str, str]:
+        """Return path-related inject vars for a standalone export script.
+
+        Delegates to the backend — ``FileSystemBackend`` returns ``BASE_DIR``
+        and ``OUTPUT_PATH``; other backends may return ``{}``.
+        """
+        return self._get_backend(plot_name).export_inject_vars(date, version)
+
+    def apply_params_to_script(
+        self, script_text: str, param_values: list | None
+    ) -> ScriptSections:
+        """Parse ``script_text`` and apply ``param_values`` to its configurator.
+
+        Used by callbacks that need to splice the user's current form values
+        into the configurator before running, saving, or exporting. Returns a
+        ``ScriptSections`` whose configurator has been updated; the code and
+        save sections are untouched. If there are no params or no values, the
+        original sections are returned.
+        """
+        sections = ScriptSections.from_text(script_text)
+        inject = _param_values_to_inject(sections.configurator, param_values)
+        if inject:
+            sections = sections.with_params(inject)
+        return sections
+
+    def version_diff(self, plot_name: str | None, date: str, version: str) -> list[str]:
+        """Return human-readable parameter changes between *version* and the one before it.
+
+        Returns an empty list for v1 (no predecessor) or when nothing changed.
+        """
+        if version == "1":
+            return []
+        prev = str(int(version) - 1)
+        current = self.load_script(plot_name, date, version)
+        previous = self.load_script(plot_name, date, prev)
+        return diff_configurator(previous.configurator, current.configurator)
+
+    def version_diff_label(
+        self, plot_name: str | None, date: str, version: str
+    ) -> tuple[str, str]:
+        """Return ``(text, color)`` describing the diff between *version* and v_{n-1}.
+
+        Pure data — no Dash dependencies. The caller wraps the text in whatever
+        UI element it likes (``html.Span``, badge, plain text, …) and applies
+        the color hint as styling.
+
+        Returns:
+            * ``("v1 — initial version", "#777")`` for v1
+            * ``("v{n} — no parameter changes from v{n-1}", "#777")`` for unchanged
+            * ``("v{n} — <comma-joined diff>", "#8cb4d5")`` for changed
+        """
+        version = str(version)
+        if version == "1":
+            return ("v1 — initial version", "#777")
+        prev_version = str(int(version) - 1)
+        diff = self.version_diff(plot_name, date, version)
+        if not diff:
+            return (f"v{version} — no parameter changes from v{prev_version}", "#777")
+        return (f"v{version} — " + ", ".join(diff), "#8cb4d5")
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -912,8 +1002,7 @@ class Gallery:
             if triggered is None:
                 return dash.no_update, dash.no_update, dash.no_update
             plot_name = triggered["index"]
-            backend = self._get_backend(plot_name)
-            dates = backend.list_dates()
+            dates = self.list_dates(plot_name)
             opts = [{"label": d, "value": d} for d in dates]
             return plot_name, opts, (dates[0] if dates else None)
 
@@ -927,8 +1016,7 @@ class Gallery:
         def init_dates_for_plot(plot_name):
             if not plot_name:
                 return [], None
-            backend = self._get_backend(plot_name)
-            dates = backend.list_dates()
+            dates = self.list_dates(plot_name)
             opts = [{"label": d, "value": d} for d in dates]
             return opts, (dates[0] if dates else None)
 
@@ -946,14 +1034,10 @@ class Gallery:
         def refresh_dates(n_clicks, plot_name, current_date):
             if not plot_name:
                 return [], None, [], None
-            backend = self._get_backend(plot_name)
-            dates = backend.list_dates()
+            dates = self.list_dates(plot_name)
             date_opts = [{"label": d, "value": d} for d in dates]
-            # Keep current date if it still exists, otherwise pick newest
-            date_val = (
-                current_date if current_date in dates else (dates[0] if dates else None)
-            )
-            versions = backend.list_versions(date_val) if date_val else []
+            date_val = current_date if current_date in dates else (dates[0] if dates else None)
+            versions = self.list_versions(plot_name, date_val) if date_val else []
             ver_opts = [{"label": f"v{v}", "value": v} for v in versions]
             ver_val = versions[-1] if versions else None
             return date_opts, date_val, ver_opts, ver_val
@@ -969,8 +1053,7 @@ class Gallery:
         def update_versions(date, plot_name):
             if not date:
                 return [], None
-            backend = self._get_backend(plot_name)
-            versions = backend.list_versions(date)
+            versions = self.list_versions(plot_name, date)
             opts = [{"label": f"v{v}", "value": v} for v in versions]
             return opts, versions[-1] if versions else None
 
@@ -989,16 +1072,12 @@ class Gallery:
         def load_version(date, version, plot_name):
             if not date or not version:
                 return (*(dash.no_update,) * 6,)
-            backend = self._get_backend(plot_name)
             version = str(version)
-            sections = backend.load_script(date, str(version))
+            sections = self.load_script(plot_name, date, version)
             script_text = sections.to_text()
-
-            # Detect configurable params from the Configurator section
             param_fields = _build_param_fields(sections.configurator)
-
-            data_children = _data_table(backend.load_data(date))
-            plot_bytes = backend.load_artifact(date, str(version))
+            data_children = _data_table(self.load_data(plot_name, date))
+            plot_bytes = self.load_artifact(plot_name, date, version)
             plot_children = _plot_img(plot_bytes)
             b64 = base64.b64encode(plot_bytes).decode() if plot_bytes else None
             return script_text, param_fields, data_children, plot_children, b64, script_text
@@ -1075,26 +1154,20 @@ class Gallery:
             from datetime import date as _date
 
             save_date = selected_date or _date.today().strftime("%Y%m%d")
-            sections = ScriptSections.from_text(script_code)
-
-            if param_values:
-                inject = _param_values_to_inject(sections.configurator, param_values)
-                if inject:
-                    sections = sections.with_params(inject)
+            sections = self.apply_params_to_script(script_code, param_values)
 
             new_version = self.save_script(plot_name, save_date, sections, author=author)
 
-            backend = self._get_backend(plot_name)
             console = (
                 f"Saved v{new_version}\n"
                 f"  scripts/script_{save_date}_v{new_version}.py\n"
                 f"  plots/plot_{save_date}_v{new_version}.png"
             )
-            dates = backend.list_dates()
+            dates = self.list_dates(plot_name)
             date_opts = [{"label": d, "value": d} for d in dates]
-            versions = backend.list_versions(save_date)
+            versions = self.list_versions(plot_name, save_date)
             ver_opts = [{"label": f"v{v}", "value": v} for v in versions]
-            plot_bytes = backend.load_artifact(save_date, str(new_version))
+            plot_bytes = self.load_artifact(plot_name, save_date, str(new_version))
             updated_script = sections.to_text()
 
             return (
@@ -1120,11 +1193,7 @@ class Gallery:
         def update_script_from_params(n_clicks, script_code, param_values):
             if not script_code or not param_values:
                 return dash.no_update
-            sections = ScriptSections.from_text(script_code)
-            inject = _param_values_to_inject(sections.configurator, param_values)
-            if inject:
-                sections = sections.with_params(inject)
-            return sections.to_text()
+            return self.apply_params_to_script(script_code, param_values).to_text()
 
         # -- Show/hide Update Script button based on param fields --
         @app.callback(
@@ -1160,23 +1229,8 @@ class Gallery:
         def show_version_diff(version, date, plot_name):
             if not date or not version:
                 return ""
-            version = str(version)
-            if version == "1":
-                return html.Span("v1 — initial version", style={"color": "#777"})
-            backend = self._get_backend(plot_name)
-            prev_version = str(int(version) - 1)
-            current = backend.load_script(date, version)
-            previous = backend.load_script(date, prev_version)
-            diff = diff_configurator(previous.configurator, current.configurator)
-            if not diff:
-                return html.Span(
-                    f"v{version} — no parameter changes from v{prev_version}",
-                    style={"color": "#777"},
-                )
-            return html.Span(
-                f"v{version} — " + ", ".join(diff),
-                style={"color": "#8cb4d5"},
-            )
+            text, color = self.version_diff_label(plot_name, date, version)
+            return html.Span(text, style={"color": color})
 
         # -- Feature 3: New Date button (detect uncharted data) --
         @app.callback(
@@ -1195,20 +1249,18 @@ class Gallery:
         def new_date_from_data(n_clicks, plot_name):
             if not plot_name:
                 return (*(dash.no_update,) * 8,)
-            backend = self._get_backend(plot_name)
-            uncharted = backend.list_uncharted_dates()
+            uncharted = self.list_uncharted_dates(plot_name)
             if not uncharted:
                 return (
                     *(dash.no_update,) * 6,
                     "No new data dates found without scripts.",
                     dash.no_update,
                 )
-            new_date = uncharted[0]  # newest uncharted date
-            template = backend.template_for_date(new_date)
+            new_date = uncharted[0]
+            template = self.template_for_date(plot_name, new_date)
             script_text = template.to_text()
             param_fields = _build_param_fields(template.configurator)
-            dates = backend.list_dates() + [new_date]
-            dates = sorted(set(dates), reverse=True)
+            dates = sorted(set(self.list_dates(plot_name) + [new_date]), reverse=True)
             date_opts = [{"label": d, "value": d} for d in dates]
             return (
                 date_opts,
@@ -1243,16 +1295,11 @@ class Gallery:
             if not script_code:
                 return dash.no_update
             sections = ScriptSections.from_text(script_code)
-            backend = self._get_backend(plot_name)
             # Build inject vars: params + date/version/paths
             inject = _param_values_to_inject(sections.configurator, param_values) or {}
             inject["date"] = date or "unknown"
             inject["version"] = int(version) if version else 0
-            if hasattr(backend, "base_dir"):
-                inject["BASE_DIR"] = str(backend.base_dir)  # type: ignore[union-attr]
-                inject["OUTPUT_PATH"] = str(
-                    backend.artifacts_dir / f"plot_{date}_v{version}.png"  # type: ignore[union-attr]
-                )
+            inject.update(self.export_inject_vars(plot_name, date or "unknown", version or "0"))
             standalone = sections.to_full(inject_vars=inject)
             filename = f"script_{date}_v{version}.py" if date and version else "script.py"
             return dcc.send_string(standalone, filename)

@@ -130,6 +130,15 @@ class StorageBackend:
             ),
         )
 
+    def export_inject_vars(self, date: str, version: str) -> dict[str, str]:
+        """Return path-related variables to inject into a standalone export script.
+
+        Override in filesystem-backed implementations to provide ``BASE_DIR``
+        and ``OUTPUT_PATH``.  The default returns an empty dict — non-filesystem
+        backends simply omit the path variables.
+        """
+        return {}
+
 
 # ---------------------------------------------------------------------------
 # Default subprocess runner (shared by all backends)
@@ -443,6 +452,12 @@ class FileSystemBackend(StorageBackend):
         return sorted(data_dates - script_dates, reverse=True)
 
     # -- Templates -----------------------------------------------------------
+
+    def export_inject_vars(self, date: str, version: str) -> dict[str, str]:
+        return {
+            "BASE_DIR": str(self.base_dir),
+            "OUTPUT_PATH": str(self.artifacts_dir / f"plot_{date}_v{version}.png"),
+        }
 
     def starter_template(self, date: str) -> ScriptSections:
         if self._starter_template_fn is not None:
