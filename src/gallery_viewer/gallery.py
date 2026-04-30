@@ -273,6 +273,7 @@ class Gallery:
         extra_controls: Any = None,
         config_path: str | Path | None = None,
         user: str | None = None,
+        track_packages: list[str] | None = None,
     ):
         if backends is not None:
             self.backends = backends
@@ -291,6 +292,11 @@ class Gallery:
         ``gv-current-user`` Store at app build time. For multi-user
         deployments, override the Store via a Dash callback (e.g. from
         a login flow) — sessions are isolated; no process-wide leakage."""
+
+        self.track_packages = list(track_packages) if track_packages else []
+        """Package names whose installed version should be stamped into the
+        script frontmatter at save time, alongside the always-on data hash
+        and Python version. Example: ``["mpl_brandpacker", "matplotlib"]``."""
 
         self._app: dash.Dash | None = None
 
@@ -856,6 +862,42 @@ class Gallery:
 
         return self._get_backend(plot_name).run_preview(sections, inject_vars=inject_vars)
 
+    def _provenance_metadata(
+        self, plot_name: str | None, date: str
+    ) -> dict[str, str]:
+        """Build the provenance metadata dict for stamping at save time.
+
+        Always includes:
+            * ``Data hash`` — sha256 of the data file (if the backend has one)
+            * ``Python`` — running interpreter version
+
+        Plus, for every name in :attr:`track_packages` that is importable, a
+        ``<package>`` entry with its installed version (resolved via
+        :func:`importlib.metadata.version`).
+        """
+        import sys
+        from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
+        meta: dict[str, str] = {}
+
+        data_hash = self._get_backend(plot_name).data_hash(date)
+        if data_hash:
+            meta["Data hash"] = data_hash
+
+        meta["Python"] = (
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        )
+
+        for pkg in self.track_packages:
+            try:
+                meta[pkg] = _pkg_version(pkg)
+            except PackageNotFoundError:
+                # Silently skip packages that aren't installed — the user
+                # asked us to track them but they're absent in this env.
+                continue
+
+        return meta
+
     def save_script(
         self,
         plot_name: str | None,
@@ -880,6 +922,10 @@ class Gallery:
             meta["Saved by"] = f"{author.strip()} ({timestamp})"
         if description and description.strip():
             meta["Description"] = description.strip()
+        # Provenance: data hash, Python version, tracked package versions.
+        # Stamped after the human-facing fields so the file reads top-down:
+        # who, why, then what-environment.
+        meta.update(self._provenance_metadata(plot_name, date))
         if meta:
             sections = sections.with_metadata(meta)
         return self._get_backend(plot_name).save_version(date, sections)

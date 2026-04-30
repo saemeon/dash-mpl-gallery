@@ -139,6 +139,16 @@ class StorageBackend:
         """
         return {}
 
+    def data_hash(self, date: str) -> str | None:
+        """Return a content hash of the data file for *date*, or ``None``.
+
+        The hash is used for provenance stamping ("what data produced this
+        chart?"). The default returns ``None`` — backends without an obvious
+        single-file data source need not compute a hash. Filesystem-backed
+        implementations should return a string like ``"sha256:abc123..."``.
+        """
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Default subprocess runner (shared by all backends)
@@ -458,6 +468,21 @@ class FileSystemBackend(StorageBackend):
             "BASE_DIR": str(self.base_dir),
             "OUTPUT_PATH": str(self.artifacts_dir / f"plot_{date}_v{version}.png"),
         }
+
+    def data_hash(self, date: str) -> str | None:
+        """Return ``"sha256:<hex>"`` of the data file for *date*, or ``None``.
+
+        Looks for ``data/data_{date}.csv`` then ``data/data_{date}.parquet``.
+        Returns ``None`` if neither exists.
+        """
+        import hashlib
+
+        for ext in ("csv", "parquet"):
+            p = self.data_dir / f"data_{date}.{ext}"
+            if p.exists():
+                h = hashlib.sha256(p.read_bytes()).hexdigest()
+                return f"sha256:{h}"
+        return None
 
     def starter_template(self, date: str) -> ScriptSections:
         if self._starter_template_fn is not None:

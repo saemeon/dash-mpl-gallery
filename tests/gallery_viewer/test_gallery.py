@@ -846,6 +846,135 @@ class TestHeadlessWorkflow:
 
 
 # ---------------------------------------------------------------------------
+# Provenance stamping — data hash + library versions
+# ---------------------------------------------------------------------------
+
+
+class TestProvenance:
+    def test_python_version_always_stamped(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        g.save_script(None, "20240101", ScriptSections(code="print(1)"))
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        # e.g. "# Python: 3.14.4"
+        assert "# Python: " in saved
+        import sys
+        assert f"{sys.version_info.major}.{sys.version_info.minor}" in saved
+
+    def test_data_hash_stamped_when_data_exists(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        g.save_script(None, "20240101", ScriptSections(code="print(1)"))
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        assert "# Data hash: sha256:" in saved
+
+    def test_data_hash_omitted_when_no_data_file(self, tmp_path):
+        from gallery_viewer._types import ScriptSections
+
+        # Build a gallery dir but DELETE the data file
+        d = _make_gallery_dir(tmp_path, "main")
+        (d / "data" / "data_20240101.csv").unlink()
+        backend = FileSystemBackend(d)
+        g = Gallery(backend=backend)
+        g.save_script(None, "20240101", ScriptSections(code="print(1)"))
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        assert "# Data hash:" not in saved
+        # but Python version still present
+        assert "# Python: " in saved
+
+    def test_data_hash_is_deterministic(self, tmp_gallery):
+        backend = FileSystemBackend(tmp_gallery)
+        h1 = backend.data_hash("20240101")
+        h2 = backend.data_hash("20240101")
+        assert h1 == h2
+        assert h1.startswith("sha256:")
+
+    def test_data_hash_changes_when_data_changes(self, tmp_path):
+        d = _make_gallery_dir(tmp_path, "main")
+        backend = FileSystemBackend(d)
+        h_before = backend.data_hash("20240101")
+        # Modify the data file
+        (d / "data" / "data_20240101.csv").write_text("x,y\n99,99\n")
+        h_after = backend.data_hash("20240101")
+        assert h_before != h_after
+
+    def test_data_hash_returns_none_for_missing_date(self, tmp_gallery):
+        backend = FileSystemBackend(tmp_gallery)
+        assert backend.data_hash("21000101") is None
+
+    def test_base_backend_data_hash_returns_none(self):
+        from gallery_viewer import StorageBackend
+
+        b = StorageBackend()
+        assert b.data_hash("20240101") is None
+
+    def test_track_packages_stamps_versions(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        # matplotlib + pandas are both real workspace dependencies
+        g = Gallery(backend=backend, track_packages=["matplotlib", "pandas"])
+        g.save_script(None, "20240101", ScriptSections(code="print(1)"))
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        assert "# matplotlib: " in saved
+        assert "# pandas: " in saved
+
+    def test_track_packages_skips_missing_packages_silently(self, tmp_gallery):
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(
+            backend=backend,
+            track_packages=["matplotlib", "this_package_does_not_exist_xyz"],
+        )
+        # Must not raise
+        g.save_script(None, "20240101", ScriptSections(code="print(1)"))
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        assert "# matplotlib: " in saved
+        assert "this_package_does_not_exist_xyz" not in saved
+
+    def test_track_packages_default_empty(self, tmp_gallery):
+        g = Gallery(backend=FileSystemBackend(tmp_gallery))
+        assert g.track_packages == []
+
+    def test_provenance_metadata_directly(self, tmp_gallery):
+        """The internal helper returns the dict directly — useful for unit tests."""
+        g = Gallery(backend=FileSystemBackend(tmp_gallery), track_packages=["pandas"])
+        meta = g._provenance_metadata(None, "20240101")
+        assert "Python" in meta
+        assert "Data hash" in meta
+        assert "pandas" in meta
+        assert meta["Data hash"].startswith("sha256:")
+
+    def test_full_metadata_block_order(self, tmp_gallery):
+        """The stamped block order is: Saved by → Description → Provenance."""
+        from gallery_viewer._types import ScriptSections
+
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        g.save_script(
+            None, "20240101", ScriptSections(code="print(1)"),
+            author="Alice", description="why",
+        )
+        latest = g.list_versions(None, "20240101")[-1]
+        saved = backend.load_script("20240101", latest).to_text()
+        # Order check
+        idx_author = saved.index("# Saved by:")
+        idx_desc = saved.index("# Description:")
+        idx_python = saved.index("# Python:")
+        assert idx_author < idx_desc < idx_python
+
+
+# ---------------------------------------------------------------------------
 # Intent capture (per-version description / "why" message)
 # ---------------------------------------------------------------------------
 
