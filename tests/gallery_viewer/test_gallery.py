@@ -1693,3 +1693,109 @@ class TestVersionSequences:
         g = Gallery(backend=FileSystemBackend(d))
         listed = g.list_dates(None)
         assert set(listed) == set(dates.keys())
+
+
+# ---------------------------------------------------------------------------
+# Tags — user stories from CLAUDE.md item E
+# ---------------------------------------------------------------------------
+
+
+class TestTagsUserStories:
+    """User stories for the tag feature.
+
+    Story #7 (publication freezer): "Don't let v7 ever change."
+        → User attaches `frozen` to a published version. The tag survives
+          subsequent loads. (Pure label — no enforcement, since save_version
+          always creates a new version by construction.)
+
+    Story #8 (new collaborator): "Which of these 47 PNGs is the canonical one?"
+        → Filter dropdown uses `versions_with_tag` to narrow the version list
+          to versions carrying a chosen tag (e.g. `published`).
+
+    Story #10 (naive user): "I just wanted to see"
+        → Add/remove tags is the one operation that mutates an existing
+          version in place — but it only touches the metadata block; the
+          plot artifact is untouched.
+    """
+
+    def test_freezer_story_tag_persists_across_loads(self, tmp_gallery):
+        """#7 — Tag attached to v1 reappears after a fresh backend load."""
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        g.add_tag(None, "20240101", "1", "frozen")
+        # Fresh Gallery instance — proves the tag is on disk, not in memory.
+        g2 = Gallery(backend=FileSystemBackend(tmp_gallery))
+        assert "frozen" in g2.list_tags(None, "20240101", "1")
+
+    def test_collaborator_story_filter_to_published(self, tmp_path):
+        """#8 — Among many versions, only `published` ones surface in the filter."""
+        d = _make_gallery_dir(tmp_path, "main", dates_versions={"20240101": 5})
+        g = Gallery(backend=FileSystemBackend(d))
+        g.add_tag(None, "20240101", "2", "published")
+        g.add_tag(None, "20240101", "4", "published")
+        g.add_tag(None, "20240101", "3", "draft")
+        published = g.versions_with_tag(None, "20240101", "published")
+        assert published == ["2", "4"]
+
+    def test_naive_user_story_add_tag_does_not_alter_plot(self, tmp_gallery):
+        """#10 — Adding a tag is metadata-only; the saved plot file is untouched."""
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        plot_path = tmp_gallery / "plots" / "plot_20240101_v1.png"
+        before = plot_path.read_bytes()
+        g.add_tag(None, "20240101", "1", "published")
+        after = plot_path.read_bytes()
+        assert before == after, "tag mutation must not re-render the plot"
+
+    def test_add_tag_is_idempotent(self, tmp_gallery):
+        """Adding the same tag twice is a silent no-op (no duplicate)."""
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        g.add_tag(None, "20240101", "1", "published")
+        g.add_tag(None, "20240101", "1", "published")
+        tags = g.list_tags(None, "20240101", "1")
+        assert tags.count("published") == 1
+
+    def test_remove_tag_silent_when_absent(self, tmp_gallery):
+        """Removing a non-existent tag does not raise."""
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        # Should not raise.
+        g.remove_tag(None, "20240101", "1", "ghost-tag")
+        assert g.list_tags(None, "20240101", "1") == []
+
+    def test_round_trip_add_remove(self, tmp_gallery):
+        """add → list shows tag → remove → list no longer shows it."""
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        g.add_tag(None, "20240101", "1", "wip")
+        assert g.list_tags(None, "20240101", "1") == ["wip"]
+        g.remove_tag(None, "20240101", "1", "wip")
+        assert g.list_tags(None, "20240101", "1") == []
+
+    def test_versions_with_tag_returns_empty_for_unknown_tag(self, tmp_gallery):
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        assert g.versions_with_tag(None, "20240101", "unknown") == []
+
+    def test_add_tag_on_unsaved_version_raises(self, tmp_gallery):
+        """Tagging a version that doesn't exist on disk raises FileNotFoundError.
+
+        Tags only mean something on a *saved* version — there's no in-memory
+        draft to attach them to.
+        """
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        with pytest.raises(FileNotFoundError):
+            g.add_tag(None, "20240101", "99", "frozen")
+
+    def test_tags_round_trip_through_file_format(self, tmp_gallery):
+        """Tags round-trip through the on-disk `# tag: ...` format."""
+        backend = FileSystemBackend(tmp_gallery)
+        g = Gallery(backend=backend)
+        g.add_tag(None, "20240101", "1", "published")
+        g.add_tag(None, "20240101", "1", "final")
+        # Inspect the actual file — flat-file principle.
+        text = (tmp_gallery / "scripts" / "script_20240101_v1.py").read_text()
+        assert "# tag: published" in text
+        assert "# tag: final" in text
