@@ -1472,6 +1472,8 @@ class Gallery:
         @app.callback(
             Output("gv-new-tag-input", "value"),
             Output("gv-edit-tags-current", "children"),
+            Output("gv-tags-row", "children", allow_duplicate=True),
+            Output("gv-tag-filter", "options", allow_duplicate=True),
             Input("gv-add-tag-btn", "n_clicks"),
             Input({"type": "gv-tag-remove", "index": ALL}, "n_clicks"),
             State("gv-new-tag-input", "value"),
@@ -1482,14 +1484,20 @@ class Gallery:
         )
         def manage_tags(add_clicks, remove_clicks, new_tag, date, version, plot_name):
             if not date or not version:
-                return "", dash.no_update
+                return "", dash.no_update, dash.no_update, dash.no_update
             trigger = ctx.triggered_id
             if trigger == "gv-add-tag-btn" and new_tag:
                 self.add_tag(plot_name, date, version, new_tag.strip())
             elif isinstance(trigger, dict) and trigger.get("type") == "gv-tag-remove":
+                # Avoid spurious removes when n_clicks=0 (initial render).
+                if not any(remove_clicks):
+                    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
                 tag_to_remove = trigger["index"]
                 self.remove_tag(plot_name, date, version, tag_to_remove)
+            else:
+                return dash.no_update, dash.no_update, dash.no_update, dash.no_update
             tags = self.list_tags(plot_name, date, version)
+            all_tags = self.all_tags(plot_name, date)
             tag_list = [
                 dbc.Badge(
                     [
@@ -1507,7 +1515,9 @@ class Gallery:
                 )
                 for t in tags
             ]
-            return "", tag_list
+            badges = [_tag_badge(t) for t in tags]
+            filter_options = [{"label": t, "value": t} for t in all_tags]
+            return "", tag_list, badges, filter_options
 
         # -- TAGS: filter version dropdown by tag --
         @app.callback(

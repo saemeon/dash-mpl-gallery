@@ -1,6 +1,7 @@
 # === METADATA ===
 # author: SINIE
 # saved: 2026-04-29 08:06
+# tag: adfaef
 
 # === CONFIGURATOR ===
 title: str = "CPI Inflatas"
