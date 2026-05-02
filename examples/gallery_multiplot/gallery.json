@@ -1,19 +1,19 @@
 {
   "title": "Multi-Plot Gallery Demo",
   "plots": {
-    "revenue_chart": {
+    "financials/revenue_chart": {
       "path": "./revenue_chart",
       "description": "Quarterly revenue with configurable title and DPI"
     },
-    "inflation": {
+    "macro/inflation": {
       "path": "./inflation",
       "description": "CPI inflation tracking with type-hinted parameters"
     },
-    "plotly_demo": {
+    "macro/interactive/plotly_demo": {
       "path": "./plotly_demo",
       "description": "Interactive Plotly chart (same data, interactive output)"
     },
-    "multi_output": {
+    "macro/interactive/multi_output": {
       "path": "./multi_output",
       "description": "Multi-output: two charts + summary table from one script"
     }
