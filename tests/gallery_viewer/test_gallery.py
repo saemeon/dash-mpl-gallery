@@ -1282,43 +1282,81 @@ class TestParseUrlState:
     def test_empty_search_returns_no_selectors(self, gallery_with_chain):
         state = gallery_with_chain.parse_url_state("")
         assert state == {
-            "plot": None, "date": None, "version": None, "param_overrides": {},
+            "item": None,
+            "group": None,
+            "version": None,
+            "param_overrides": {},
         }
 
     def test_selectors_extracted(self, gallery_with_chain):
-        state = gallery_with_chain.parse_url_state(
-            "?plot=main&date=20240101&version=2"
-        )
-        assert state["plot"] == "main"
-        assert state["date"] == "20240101"
+        state = gallery_with_chain.parse_url_state("?id=main&group=20240101&version=2")
+        assert state["item"] == "main"
+        assert state["group"] == "20240101"
         assert state["version"] == "2"
 
     def test_param_overrides_coerced_to_declared_types(self, gallery_with_chain):
         # chain script defines: name: str, version: int
         state = gallery_with_chain.parse_url_state(
-            "?plot=main&date=20240101&version=2&p.name=Q4&p.version=99"
+            "?id=main&group=20240101&version=2&script_name=Q4&script_version=99"
         )
         assert state["param_overrides"] == {"name": "Q4", "version": 99}
 
     def test_unknown_param_silently_ignored(self, gallery_with_chain):
         state = gallery_with_chain.parse_url_state(
-            "?plot=main&date=20240101&version=2&p.does_not_exist=foo"
+            "?id=main&group=20240101&version=2&script_does_not_exist=foo"
         )
         assert state["param_overrides"] == {}
 
     def test_bad_cast_dropped(self, gallery_with_chain):
         # version is int — "not-a-number" can't be coerced
         state = gallery_with_chain.parse_url_state(
-            "?plot=main&date=20240101&version=2&p.version=not-a-number"
+            "?id=main&group=20240101&version=2&script_version=not-a-number"
         )
         assert state["param_overrides"] == {}
 
     def test_no_overrides_without_full_selectors(self, gallery_with_chain):
         # missing version → can't resolve param schema → overrides skipped
         state = gallery_with_chain.parse_url_state(
-            "?plot=main&date=20240101&p.name=Q4"
+            "?id=main&group=20240101&script_name=Q4"
         )
         assert state["param_overrides"] == {}
+
+    def test_render_route_returns_artifact_bytes(self, make_dir):
+        d = make_dir("main", dates_versions={"20240101": 1})
+        g = Gallery(backend=FileSystemBackend(d))
+        client = g.app.server.test_client()
+        resp = client.get("/render?id=main&group=20240101&version=1")
+        assert resp.status_code == 200
+        assert resp.mimetype == "image/png"
+        assert resp.data  # non-empty
+
+    def test_render_route_404_for_unknown_version(self, make_dir):
+        d = make_dir("main", dates_versions={"20240101": 1})
+        g = Gallery(backend=FileSystemBackend(d))
+        client = g.app.server.test_client()
+        resp = client.get("/render?id=main&group=20240101&version=99")
+        assert resp.status_code == 404
+
+    def test_render_route_400_when_selectors_missing(self, make_dir):
+        d = make_dir("main", dates_versions={"20240101": 1})
+        g = Gallery(backend=FileSystemBackend(d))
+        client = g.app.server.test_client()
+        resp = client.get("/render?id=main")
+        assert resp.status_code == 400
+
+    def test_url_keys_are_configurable(self, make_dir):
+        # A "Plot/Date"-flavoured gallery overrides URL keys
+        d = make_dir("main", dates_versions={"20240101": 1})
+        g = Gallery(
+            backend=FileSystemBackend(d),
+            item_url_key="plot",
+            group_url_key="date",
+        )
+        state = g.parse_url_state("?plot=main&date=20240101&version=1")
+        assert state["item"] == "main"
+        assert state["group"] == "20240101"
+        # Keys returned use internal axis names regardless of URL key choice
+        assert "plot" not in state and "date" not in state
 
 
 # ---------------------------------------------------------------------------

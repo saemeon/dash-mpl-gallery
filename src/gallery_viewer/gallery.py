@@ -300,6 +300,12 @@ class Gallery:
         config_path: str | Path | None = None,
         context: dict[str, str] | None = None,
         track_packages: list[str] | None = None,
+        item_label: str = "Item",
+        group_label: str = "Group",
+        version_label: str = "Version",
+        item_url_key: str = "id",
+        group_url_key: str = "group",
+        version_url_key: str = "version",
     ):
         if backends is not None:
             self.backends = backends
@@ -313,6 +319,18 @@ class Gallery:
         self.theme = theme or dbc.themes.SLATE
         self.export_fn = export_fn
         self.extra_controls = extra_controls
+
+        # User-facing vocabulary — defaults are domain-neutral. Override
+        # per-gallery for friendlier labels (e.g. ``item_label="Plot"``,
+        # ``group_label="Date"`` recovers the previous chart-flavoured UI).
+        # URL keys stay neutral by default to keep deep-links stable across
+        # vocabulary changes — see CLAUDE.md "URL deep-linking — design notes".
+        self.item_label = item_label
+        self.group_label = group_label
+        self.version_label = version_label
+        self.item_url_key = item_url_key
+        self.group_url_key = group_url_key
+        self.version_url_key = version_url_key
 
         self.context: dict[str, str] = dict(context) if context else {}
         """Ambient key-value pairs stamped into every saved version's metadata.
@@ -414,13 +432,17 @@ class Gallery:
 
         @app.server.route("/render")
         def render_artifact():  # type: ignore[unused-ignore]
-            plot = request.args.get("plot")
-            date = request.args.get("date")
-            version = request.args.get("version")
-            if not (plot and date and version):
-                abort(400, "plot, date, version are required")
+            item = request.args.get(self.item_url_key)
+            group = request.args.get(self.group_url_key)
+            version = request.args.get(self.version_url_key)
+            if not (item and group and version):
+                abort(
+                    400,
+                    f"{self.item_url_key}, {self.group_url_key}, "
+                    f"{self.version_url_key} are required",
+                )
             try:
-                data = self.load_artifact(plot, date, version)
+                data = self.load_artifact(item, group, version)
             except (FileNotFoundError, KeyError):
                 abort(404)
             if not data:
@@ -445,12 +467,12 @@ class Gallery:
                 dcc.Download(id="export-download"),
             ]
 
-        # "Add Plot" button (only when config file is used)
+        # "Add <item>" button (only when config file is used)
         add_plot_btn = []
         if self._config_path:
             add_plot_btn = [
                 dbc.Button(
-                    "+ Add Plot",
+                    f"+ Add {self.item_label}",
                     id="gv-add-plot-btn",
                     color="secondary",
                     size="sm",
@@ -459,10 +481,10 @@ class Gallery:
                 ),
                 dbc.Modal(
                     [
-                        dbc.ModalHeader("Add New Plot"),
+                        dbc.ModalHeader(f"Add New {self.item_label}"),
                         dbc.ModalBody(
                             [
-                                dbc.Label("Plot name"),
+                                dbc.Label(f"{self.item_label} name"),
                                 dbc.Input(
                                     id="gv-add-plot-name",
                                     type="text",
@@ -521,7 +543,7 @@ class Gallery:
                             width=2,
                             children=[
                                 html.Label(
-                                    "Plots",
+                                    f"{self.item_label}s",
                                     style={
                                         "color": "#aaa",
                                         "fontSize": "12px",
@@ -574,7 +596,7 @@ class Gallery:
                                             width=5,
                                             children=[
                                                 html.Label(
-                                                    "Date",
+                                                    self.group_label,
                                                     style={
                                                         "color": "#aaa",
                                                         "fontSize": "12px",
@@ -582,7 +604,7 @@ class Gallery:
                                                 ),
                                                 dcc.Dropdown(
                                                     id="gv-date",
-                                                    placeholder="Select date...",
+                                                    placeholder=f"Select {self.group_label.lower()}...",
                                                     clearable=False,
                                                     style={"marginBottom": "6px"},
                                                 ),
@@ -592,7 +614,7 @@ class Gallery:
                                             width=5,
                                             children=[
                                                 html.Label(
-                                                    "Version",
+                                                    self.version_label,
                                                     style={
                                                         "color": "#aaa",
                                                         "fontSize": "12px",
@@ -622,7 +644,10 @@ class Gallery:
                                                         "fontSize": "16px",
                                                         "padding": "4px",
                                                     },
-                                                    title="Refresh dates & versions",
+                                                    title=(
+                                                        f"Refresh {self.group_label.lower()}s "
+                                                        f"& {self.version_label.lower()}s"
+                                                    ),
                                                 ),
                                             ],
                                         ),
@@ -643,7 +668,10 @@ class Gallery:
                                                         "fontSize": "16px",
                                                         "padding": "4px",
                                                     },
-                                                    title="Start chart for new data date",
+                                                    title=(
+                                                        f"Start new {self.group_label.lower()} "
+                                                        "from uncharted data"
+                                                    ),
                                                 ),
                                             ],
                                         ),
@@ -1148,50 +1176,54 @@ class Gallery:
     def parse_url_state(self, search: str) -> dict:
         """Parse a URL query string into selectors and configurator overrides.
 
-        Recognised keys:
+        Recognised keys (key names are configurable via ``item_url_key``,
+        ``group_url_key``, ``version_url_key``; defaults are ``id``,
+        ``group``, ``version``):
 
-        * ``plot``, ``date``, ``version`` — selectors. Any of these may be
-          missing; they propagate through to the UI as ``no_update``.
-        * ``p.<name>`` — configurator parameter override. Looked up against
-          the chosen ``plot``/``date``/``version``'s detected params and
+        * selectors — any may be missing; they propagate through to the UI
+          as ``no_update``.
+        * ``script_<name>`` — configurator parameter override. Looked up
+          against the chosen item/group/version's detected params and
           coerced to the declared type. Unknown names and bad casts are
           silently dropped (URLs are user-supplied; never raise).
 
-        The ``p.`` prefix exists only to disambiguate selector keys from
-        configurator params (e.g. a script with ``date: str = ...``).
-        Reconsider when revisiting URL design.
+        Returned shape uses the *internal* axis names (``item``, ``group``,
+        ``version``) regardless of URL key configuration, so callers don't
+        need to track which key was used.
         """
         from urllib.parse import parse_qs
 
         flat = {k: v[0] for k, v in parse_qs(search.lstrip("?")).items() if v}
-        plot = flat.get("plot")
-        date = flat.get("date")
-        version = flat.get("version")
+        item = flat.get(self.item_url_key)
+        group = flat.get(self.group_url_key)
+        version = flat.get(self.version_url_key)
 
         overrides: dict[str, Any] = {}
-        if plot and date and version:
+        if item and group and version:
             try:
-                sections = self.load_script(plot, date, version)
+                sections = self.load_script(item, group, version)
             except (FileNotFoundError, KeyError):
                 sections = None
             if sections is not None:
                 specs = detect_params(sections.configurator)
+                prefix = "script_"
                 for k, raw in flat.items():
-                    if not k.startswith("p."):
+                    if not k.startswith(prefix):
                         continue
-                    spec = specs.get(k[2:])
+                    name = k[len(prefix) :]
+                    spec = specs.get(name)
                     if spec is None or spec.annotation is None:
                         continue
                     try:
                         if spec.annotation is bool:
-                            overrides[k[2:]] = raw.lower() in ("1", "true", "yes")
+                            overrides[name] = raw.lower() in ("1", "true", "yes")
                         else:
-                            overrides[k[2:]] = spec.annotation(raw)
+                            overrides[name] = spec.annotation(raw)
                     except (ValueError, TypeError):
                         pass
         return {
-            "plot": plot,
-            "date": date,
+            "item": item,
+            "group": group,
             "version": version,
             "param_overrides": overrides,
         }
@@ -1457,8 +1489,8 @@ class Gallery:
         def apply_url(search):
             state = self.parse_url_state(search or "")
             return (
-                state["plot"] or dash.no_update,
-                state["date"] or dash.no_update,
+                state["item"] or dash.no_update,
+                state["group"] or dash.no_update,
                 state["version"] or dash.no_update,
                 state["param_overrides"] or None,
             )
@@ -1869,7 +1901,7 @@ class Gallery:
             if not uncharted:
                 return (
                     *(dash.no_update,) * 6,
-                    "No new data dates found without scripts.",
+                    f"No new {self.group_label.lower()}s found without scripts.",
                     dash.no_update,
                 )
             new_date = uncharted[0]
@@ -1885,7 +1917,7 @@ class Gallery:
                 "1",
                 script_text,
                 param_fields,
-                f"New date {new_date} — edit and Save Version to create v1.",
+                f"New {self.group_label.lower()} {new_date} — edit and Save Version to create v1.",
                 script_text,
             )
 
@@ -1968,13 +2000,17 @@ class Gallery:
             )
             def create_plot(n_clicks, name, desc):
                 if not name or not name.strip():
-                    return ("Please enter a plot name.", dash.no_update, dash.no_update)
+                    return (
+                        f"Please enter a {self.item_label.lower()} name.",
+                        dash.no_update,
+                        dash.no_update,
+                    )
 
                 name = name.strip().replace(" ", "_").lower()
                 config = load_config(self._config_path)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
                 if name in config.get("plots", {}):
                     return (
-                        f"Plot '{name}' already exists.",
+                        f"{self.item_label} '{name}' already exists.",
                         dash.no_update,
                         dash.no_update,
                     )

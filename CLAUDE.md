@@ -245,24 +245,57 @@ This section is the canonical high-level requirements view for the project.
 | B7 | Dirty-flag navigation warning (clientside JS + dialog flow) | Partial |
 | B8 | Live-render endpoint: `/render` runs the script with overridden params (vs current cached-only behaviour). Needs allowlist of overridable params, rate limiting, and an auth story — it's a public script-execution surface. Subprocess + 60s timeout (N3) makes it costly. Worth doing only when there's a concrete consumer. | Backlog |
 
-## URL deep-linking — design notes (revisit candidates)
+## URL deep-linking & vocabulary — design notes (revisit candidates)
 
-Implemented as F28/F29. Two choices baked in that are worth revisiting if the
-URL story expands:
+Implemented as F28/F29. The model has three axes — **item × group × version**
+— exposed via configurable URL keys (`item_url_key` / `group_url_key` /
+`version_url_key`, defaults `id` / `group` / `version`) and configurable UI
+labels (`item_label` / `group_label` / `version_label`, defaults
+`Item` / `Group` / `Version`). Override per-gallery for domain-friendly
+vocabulary, e.g. `Gallery(item_label="Plot", group_label="Date")` recovers
+the previous chart-flavoured UI.
 
-1. **`p.<name>` prefix for configurator overrides.** Exists only to disambiguate
-   selector keys (`plot`, `date`, `version`) from configurator params with the
-   same name (e.g. a script with `date: str = "..."`). Alternatives: a
-   reserved-word convention (drop the prefix, document that scripts cannot use
-   `plot`/`date`/`version` as param names), or a more readable prefix like
-   `script_<name>`. The current dot prefix is terse but unusual in URLs;
-   `script_` is more self-documenting. Cheap to change later — only `parse_url_state`
-   in `gallery.py` cares about the syntax.
+Choices worth revisiting if the URL story expands:
+
+1. **`script_<name>` prefix for configurator overrides.** Exists to
+   disambiguate selector keys from configurator params with the same name
+   (e.g. a script with `group: str = "..."`). Alternative: a reserved-word
+   convention (drop the prefix, document that scripts cannot use `id`/
+   `group`/`version` as param names). Cheap to change later — only
+   `parse_url_state` cares about the syntax.
+
 2. **Param overrides applied at render time, not via a separate callback.**
    The `load_version` callback reads `gv-url-overrides` as `State` and bakes
    override values into field defaults inside `_build_param_fields`. The
    alternative — a second callback using pattern-matching IDs to write into
    already-rendered `gv-param` fields — would be more decoupled but adds a
    round-trip and another callback to reason about. Switch if URL state needs
-   to update fields *after* initial load (e.g. user changes `?p.dpi=...`
+   to update fields *after* initial load (e.g. user changes `?script_dpi=...`
    without reselecting the version).
+
+3. **Internal Dash IDs stay date-flavoured (`gv-date`, `gv-plot-select`).**
+   Renamed labels but not internal component IDs — they're an internal
+   contract, not user-facing. Renaming would mean touching every callback for
+   zero user benefit. Worth it only if the storage backend interface
+   (`list_dates`, `load_artifact`, `_get_backend(plot_name)`) is also
+   renamed in a coordinated refactor.
+
+4. **Storage backend interface keeps date/version vocabulary.** `list_dates`,
+   `load_script(date, version)`, `plot_{date}_v{N}.png` filenames — all kept
+   for now. A generic backend (`list_groups`, `{group}_v{N}.<ext>` filenames)
+   would let project-flavoured galleries have project-flavoured directories
+   too, but it's a breaking change for every existing deployment. Evaluate
+   when a real non-date use case appears.
+
+5. **Inject-vars contract uses `date`/`version`.** User scripts read
+   `inject["date"]` / `inject["version"]`; renaming silently breaks every
+   existing script. Treat as part of the public API; don't change without
+   a migration path.
+
+6. **2-axis variant (collapse group into id).** Discussed and deferred. The
+   3-axis split is load-bearing for auto-versioning, `version_diff`,
+   `template_for_date`, and the "new data arrived" workflow (F20) — all
+   well-defined only when versions share inputs within a group. A
+   `group_axis=False` opt-in (hide the group dropdown, default group to a
+   constant) could ship later for one-off-script galleries. Don't collapse
+   in the storage layer — too much workflow lives on the split.
