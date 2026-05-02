@@ -60,7 +60,9 @@ class TestScriptSections:
         assert restored.code == original.code
 
     def test_with_params_replaces_values(self):
-        s = ScriptSections(configurator='title: str = "old"\ndpi: int = 100', code="pass")
+        s = ScriptSections(
+            configurator='title: str = "old"\ndpi: int = 100', code="pass"
+        )
         result = s.with_params({"title": "new", "dpi": 150})
         assert 'title: str = "new"' in result.configurator
         assert "dpi: int = 150" in result.configurator

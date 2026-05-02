@@ -95,9 +95,9 @@ def test_multi_backend_sidebar_click_switches_active_plot(dash_duo, tmp_path):
     beta_nav.click()
     time.sleep(1.0)  # nav_click → date opts → version reload → script load
 
-    wrapper_html = dash_duo.find_element("#gv-editor-wrapper").get_attribute(
-        "innerHTML"
-    ) or ""
+    wrapper_html = (
+        dash_duo.find_element("#gv-editor-wrapper").get_attribute("innerHTML") or ""
+    )
     assert "beta" in wrapper_html, (
         "editor should contain beta's configurator after clicking beta. "
         f"snippet={wrapper_html[:200]!r}"
@@ -108,9 +108,9 @@ def test_multi_backend_sidebar_click_switches_active_plot(dash_duo, tmp_path):
     alpha_nav.click()
     time.sleep(1.0)
 
-    wrapper_html = dash_duo.find_element("#gv-editor-wrapper").get_attribute(
-        "innerHTML"
-    ) or ""
+    wrapper_html = (
+        dash_duo.find_element("#gv-editor-wrapper").get_attribute("innerHTML") or ""
+    )
     assert "alpha" in wrapper_html, (
         "editor should contain alpha's configurator after switching back. "
         f"snippet={wrapper_html[:200]!r}"

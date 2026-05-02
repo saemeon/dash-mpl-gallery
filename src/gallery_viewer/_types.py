@@ -81,8 +81,11 @@ class ScriptSections:
         """
         docstring, body = _split_docstring(text)
 
-        if cls.MARKER_METADATA not in body and cls.MARKER_CONFIGURATOR not in body \
-                and cls.MARKER_CODE not in body:
+        if (
+            cls.MARKER_METADATA not in body
+            and cls.MARKER_CONFIGURATOR not in body
+            and cls.MARKER_CODE not in body
+        ):
             # No markers at all — treat the whole body as code.
             return cls(docstring=docstring, code=body.strip())
 
@@ -297,7 +300,7 @@ def _split_docstring(text: str) -> tuple[str, str]:
         body = body[1:]
     if body.endswith("\n"):
         body = body[:-1]
-    rest = text[m.end():]
+    rest = text[m.end() :]
     return body, rest.lstrip("\n")
 
 
@@ -360,9 +363,7 @@ def _parse_metadata_block(lines: list[str]) -> tuple[dict[str, str], list[str]]:
                 # ends the multi-line value.
                 if not nbody.startswith(" ") and not nbody.startswith("\t"):
                     break
-                if ":" in nbody.lstrip()[:40] and re.match(
-                    r"^\s*\w+\s*:\s*\S", nbody
-                ):
+                if ":" in nbody.lstrip()[:40] and re.match(r"^\s*\w+\s*:\s*\S", nbody):
                     # Looks like another key, even if indented — bail.
                     break
                 collected.append(nbody.lstrip())
@@ -433,7 +434,7 @@ def _format_inject_vars(vars: dict[str, object]) -> str:
     lines = []
     for name, value in vars.items():
         if isinstance(value, str):
-            lines.append(f'{name} = {value!r}')
+            lines.append(f"{name} = {value!r}")
         elif isinstance(value, bool):
             lines.append(f"{name} = {value}")
         else:

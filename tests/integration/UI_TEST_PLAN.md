@@ -84,16 +84,15 @@ Target file: `tests/integration/test_multi_backend_ui.py` ✅ created (C2/C3),
 - `test_workflows_ui.py` — 6 tests (A1, A2, A3, B2, B3, C1)
 - `test_multi_backend_ui.py` — 3 tests (C2, C3 negative, C3 positive)
 
-(The 7 pre-existing `test_user_stories_ui.py` tests + 1 of the 4 tags tests
-also pass; the other 3 tags tests in `test_tags_ui.py` fail independently
-of this work — pre-existing failure, not introduced here.)
+Integration suite now also includes:
+
+- `test_user_stories_ui.py` — 7 tests
+- `test_tags_ui.py` — 4 tests (add / persist / filter / remove)
 
 ## Next pass (out of scope for this iteration)
 
 - B1 dirty flag — revisit once a navigation/edit guard is wired to
   `gv-confirm-navigate.displayed`.
-- Tags UI tests in `test_tags_ui.py` are pre-existingly failing in 3 of 4
-  cases — unrelated to this work, but worth a follow-up triage.
 - A "save through the UI then run again" round-trip — currently each
   workflow test exercises a single causal arrow; a longer scenario would
   be a useful regression net.

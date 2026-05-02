@@ -33,7 +33,9 @@ def _seed_gallery(root: Path, n_versions: int = 3) -> Path:
     (d / "data").mkdir(parents=True)
     (d / "plots").mkdir()
     (d / "scripts").mkdir()
-    pd.DataFrame({"x": [1, 2], "y": [3, 4]}).to_csv(d / "data" / "data_20240101.csv", index=False)
+    pd.DataFrame({"x": [1, 2], "y": [3, 4]}).to_csv(
+        d / "data" / "data_20240101.csv", index=False
+    )
     for v in range(1, n_versions + 1):
         (d / "plots" / f"plot_20240101_v{v}.png").write_bytes(b"\x89PNG fake")
         sections = ScriptSections(
@@ -42,6 +44,24 @@ def _seed_gallery(root: Path, n_versions: int = 3) -> Path:
         )
         (d / "scripts" / f"script_20240101_v{v}.py").write_text(sections.to_text())
     return d
+
+
+def _select_dropdown_option(
+    dash_duo, dropdown_id: str, option_text: str, timeout: float = 5.0
+):
+    """Select *option_text* from a Dash dropdown rendered as a listbox popover."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        dash_duo.find_element(dropdown_id).click()
+        time.sleep(0.2)
+        options = dash_duo.driver.find_elements(By.CSS_SELECTOR, "[role='option']")
+        for option in options:
+            if option.text.strip() == option_text:
+                option.click()
+                return
+        dash_duo.driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+        time.sleep(0.1)
+    raise AssertionError(f"option {option_text!r} not found in {dropdown_id}")
 
 
 # ── 1. Adding a tag updates all three sinks (regression: tag sync) ──────────
@@ -95,7 +115,13 @@ def test_tag_persists_when_switching_versions_and_back(dash_duo, tmp_path):
     dash_duo.wait_for_element("#gv-version", timeout=10)
     time.sleep(0.5)
 
-    # On initial load, v1's `frozen` badge is visible.
+    # Pick v1 explicitly (initial selection defaults to the latest version).
+    _select_dropdown_option(dash_duo, "#gv-version", "v1")
+    dash_duo.wait_for_contains_text("#gv-tags-row", "frozen", timeout=5)
+
+    # Switching away and back must keep the persisted tag.
+    _select_dropdown_option(dash_duo, "#gv-version", "v2")
+    _select_dropdown_option(dash_duo, "#gv-version", "v1")
     dash_duo.wait_for_contains_text("#gv-tags-row", "frozen", timeout=5)
 
 
@@ -114,14 +140,8 @@ def test_filter_dropdown_restricts_versions_to_tagged_ones(dash_duo, tmp_path):
     dash_duo.wait_for_element("#gv-tag-filter", timeout=10)
     time.sleep(0.5)
 
-    # Click the filter dropdown and pick `published`.
-    filter_dd = dash_duo.find_element("#gv-tag-filter")
-    filter_dd.click()
-    # Dash dropdown options render as divs with class Select-option.
-    dash_duo.wait_for_text_to_equal(
-        ".Select-option", "published", timeout=5
-    )
-    dash_duo.find_element(".Select-option").click()
+    # Pick `published` from the tag filter dropdown.
+    _select_dropdown_option(dash_duo, "#gv-tag-filter", "published")
 
     # Version dropdown should now only contain v2.
     time.sleep(0.5)  # let the callback chain settle
@@ -142,6 +162,10 @@ def test_remove_tag_via_modal_clears_main_row(dash_duo, tmp_path):
 
     dash_duo.wait_for_element("#gv-version", timeout=10)
     time.sleep(0.5)
+
+    # Pick v1 explicitly (initial selection defaults to the latest version).
+    _select_dropdown_option(dash_duo, "#gv-version", "v1")
+
     # Sanity: tag is rendered in the main row.
     dash_duo.wait_for_contains_text("#gv-tags-row", "draft", timeout=5)
 

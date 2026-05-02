@@ -34,7 +34,7 @@ def _seed_gallery(
     root: Path,
     *,
     n_versions: int = 1,
-    configurator: str = "title: str = \"Demo\"\nshow: bool = True",
+    configurator: str = 'title: str = "Demo"\nshow: bool = True',
 ) -> Path:
     """Minimal gallery dir at *root* with one date and N saved versions."""
     d = root / "g"
@@ -125,8 +125,9 @@ def test_reviewer_story_diff_label_summarizes_what_changed(dash_duo, tmp_path):
     time.sleep(0.7)
 
     # Diff label is in #gv-version-diff. For v2 it should mention `title`.
-    dash_duo.wait_for_text_to_equal("#gv-version-diff", "v2 — title", timeout=5) \
-        if False else None  # contains-check below is more robust
+    dash_duo.wait_for_text_to_equal(
+        "#gv-version-diff", "v2 — title", timeout=5
+    ) if False else None  # contains-check below is more robust
     diff_text = dash_duo.find_element("#gv-version-diff").text
     assert "v2" in diff_text
     assert "title" in diff_text
@@ -177,9 +178,7 @@ def test_no_skill_floor_story_typed_assignments_render_as_form_fields(
         tmp_path,
         n_versions=1,
         configurator=(
-            'title: str = "Quarterly Revenue"\n'
-            "show_target: bool = True\n"
-            "dpi: int = 150"
+            'title: str = "Quarterly Revenue"\nshow_target: bool = True\ndpi: int = 150'
         ),
     )
     gallery = Gallery(backend=FileSystemBackend(base))
@@ -192,9 +191,7 @@ def test_no_skill_floor_story_typed_assignments_render_as_form_fields(
     # whose dict-form serialisation contains the param name.
     fields_html = dash_duo.find_element("#gv-param-fields").get_attribute("innerHTML")
     for name in ("title", "show_target", "dpi"):
-        assert name in fields_html, (
-            f"param {name!r} not rendered into #gv-param-fields"
-        )
+        assert name in fields_html, f"param {name!r} not rendered into #gv-param-fields"
 
 
 # ── #4 The reproducer — standalone .py export ──────────────────────────────
@@ -230,9 +227,7 @@ def test_reproducer_story_export_button_present_and_clickable(dash_duo, tmp_path
 # ── #9 The auditor — data hash + provenance stamped at save time ───────────
 
 
-def test_auditor_story_provenance_stamped_when_saving_through_ui(
-    dash_duo, tmp_path
-):
+def test_auditor_story_provenance_stamped_when_saving_through_ui(dash_duo, tmp_path):
     """Story #9: "What data file produced this exact PNG?"
 
     Saving through the UI must stamp a data hash + Python version into the
@@ -260,9 +255,7 @@ def test_auditor_story_provenance_stamped_when_saving_through_ui(
 # ── #10 The naive user — Save creates a NEW version (no overwrite) ─────────
 
 
-def test_naive_user_story_save_never_overwrites_existing_version(
-    dash_duo, tmp_path
-):
+def test_naive_user_story_save_never_overwrites_existing_version(dash_duo, tmp_path):
     """Story #10: "I just wanted to see — and now v8 is the boss's experiment."
 
     The boss hits Save expecting nothing to happen. Save must always create
@@ -285,6 +278,8 @@ def test_naive_user_story_save_never_overwrites_existing_version(
     time.sleep(1.5)
 
     # v1 untouched, v2 created.
-    assert v1_path.read_bytes() == v1_before, "Save overwrote v1 — that violates story #10"
+    assert v1_path.read_bytes() == v1_before, (
+        "Save overwrote v1 — that violates story #10"
+    )
     v2_path = base / "scripts" / "script_20240101_v2.py"
     assert v2_path.exists()

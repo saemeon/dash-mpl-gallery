@@ -58,15 +58,15 @@ the same PNG. **Implication:** every chart should be trivially reproducible
 from a single file.
 
 ### 5. **The annotator** — "I want to record WHY I made this change in v4"
-The Author field is the seed. The natural extension is a per-version commit
-message — not just "Saved by Alice" but "Switched to log scale because client
-said the linear view buried the small categories." This is where the
-analytical *thinking* lives, and right now it has nowhere to go.
+Implemented: save captures both **who** and **why**. The Save modal stores a
+per-version change note (commit-style rationale) alongside author metadata,
+so analytical intent is preserved directly with the script version.
 
 ### 6. **The reviewer** — "Show me what changed between Tuesday and today"
-`version_diff` covers parameter changes. The real reviewer question is "did
-the chart change, and how?" — implying side-by-side image diff, possibly a
-perceptual diff badge. Today the reviewer mentally A/Bs v3 and v4.
+Implemented: `version_diff` covers parameter-level changes and is now paired
+with persisted change notes, so reviewers see both the config delta and the
+author's intent. Side-by-side perceptual image diff remains a possible future
+enhancement.
 
 ### 7. **The publication-time freezer** — "Don't let v7 ever change"
 Once a chart ships in a paper, every future operation must be non-destructive.
@@ -80,10 +80,9 @@ draft. Wants to grow into a *project state* layer (a `status.md` per date, or
 a "current" pointer).
 
 ### 9. **The auditor / stickler** — "Show me the data lineage"
-For regulated contexts: "what data file produced this exact PNG?" Today the
-linkage is convention (`data_YYYYMMDD.csv` → `script_YYYYMMDD_vN.py` →
-`plot_YYYYMMDD_vN.png`). An auditor wants a **hash**. Stamp the data hash
-into the script's frontmatter at save time.
+Implemented: save-time provenance stamping captures audit metadata in script
+frontmatter, including data linkage metadata (hash-based lineage) so a saved
+version is self-describing for regulated review.
 
 ### 10. **The naive user who shouldn't break things** — "I just wanted to see"
 The boss again, but more dangerous. They edit, hit Save, and now v8 is "boss's
@@ -119,98 +118,21 @@ feature.
 
 ---
 
-## Near-term roadmap
+## Feature status
 
-### A. Intent capture — per-version description / commit message
-**Why:** unlocks four user stories at once (#5, #6, #8, #12). Today the
-"Saved by Alice" line is the only metadata; it answers *who*, never *why*.
+### Implemented recently (formerly roadmap A/B/C/E)
+- **A. Intent capture:** Save modal includes per-version change note and stores
+  rationale metadata with the script version.
+- **B. Provenance stamping:** save-time frontmatter includes provenance fields
+  (including data lineage hash and runtime/package context).
+- **C. Current-user registration:** `Gallery.user` can seed author defaults so
+  save flows auto-fill current user identity.
+- **E. Tags:** versions support free-form tags (`published`, `final`, `draft`,
+  `wip`, `frozen`, etc.) in frontmatter and UI filtering workflows.
 
-**Shape:**
-- New free-form text field on the Save modal ("What changed in this version?").
-- Persisted as a comment block at the top of the saved script (keeping the
-  flat-file principle — anyone reading the `.py` directly sees the rationale).
-- Surfaced in the version dropdown / diff label as a tooltip or inline hint.
-
-**Cost:** ~half day. Low-risk.
-
-### B. Provenance stamping
-**Why:** unlocks #9 (audit) and #11 (CI). Makes the chart self-describing in
-ways that survive even after the gallery is gone.
-
-**Shape:**
-- At save time, hash the data file (sha256 of `data_YYYYMMDD.csv`) and stamp
-  into the script's frontmatter.
-- Stamp `mpl_brandpacker` version (and any other brand-determining deps).
-- Optionally stamp Python version + key library versions (matplotlib, pandas).
-- Surface a "Provenance" section in the gallery UI.
-
-**Cost:** ~1 day. Medium-risk: needs a stable convention for the frontmatter
-shape so downstream consumers can parse it.
-
-### D. Generic framing — drop the implicit "mpl-only" assumption
-**Why:** The package is already framework-neutral; the docs/name don't say so.
-A user evaluating it for plotly or altair shouldn't have to read the source to
-realise it works.
-
-**Shape:**
-- README + module docstring: state up front "ships with mpl starter; works
-  with any chart library that emits PNG/JSON/CSV from a script."
-- Optional: rename to `dash-script-gallery` (or similar) — non-trivial
-  (PyPI / imports), evaluate when timing is right.
-- Optional: ship a couple of alternative starter templates (`plotly`,
-  `blank`) selectable via `Gallery(starter_kind=...)`.
-
-**Cost:** ~1 hour for the docs reframe; rename is bigger.  Decide later.
-
-### C. Current-user registration
-**Why:** small but high-quality-of-life. Makes the Author field auto-fill so
-the user doesn't type their name every save. Pairs naturally with #5 (intent
-capture) — if the user is registered, the modal becomes "describe what
-changed" and the author is implicit.
-
-**Shape:**
-```python
-g = Gallery(user="Paul")     # at construction
-g.user = "Alice"             # later, e.g. from a Dash login callback
-```
-- `Gallery.user: str | None` attribute, settable.
-- `save_script(..., author=None)` — if `author is None`, fall back to
-  `self.user`.
-- Save modal pre-fills the author field from `g.user`.
-
-**Multi-user nuance (deferred):** for a deployed Dash app with multiple
-concurrent sessions, a process-wide `g.user` would leak across sessions. The
-right shape there is a per-session Dash `Store` populated by the login
-callback, then the modal reads from the Store. **Not in scope for v1** —
-local/single-user is the dominant story today.
-
-**Cost:** ~1 hour. Low-risk.
-
-### E. Tags — generalize state markers (replaces "frozen / final flag")
-**Why:** unlocks #7 (publication freeze) and the filtering need behind #8 / #10
-("which of these 47 PNGs is the canonical one?"). A free-form tag set per
-version is strictly more expressive than a single boolean — `frozen`, `final`,
-`published`, `draft`, `wip` all become tags, and the user can invent their own.
-Analogous to git tags: cheap, additive, never destructive.
-
-**Shape:**
-- Tags live in the script's frontmatter as a comment line:
-  `# tags: published, final` — flat-file principle preserved (#3).
-- Free-form strings, no enforced vocabulary, but a few are conventional and
-  surfaced in the UI: `published`, `final`, `draft`, `wip`, `frozen`.
-- `frozen` is purely informational since `save_version` always creates a new
-  version by construction. There is nothing to enforce. Everything is purely
-  informational / for filtering.
-- Rendered as small badges next to the version dropdown.
-- Filter chip in the version selector ("show only `published`").
-- Backend API on `Gallery` / `StorageBackend`:
-  - `list_tags(date, version) -> set[str]`
-  - `add_tag(date, version, tag) / remove_tag(...)`
-  - `versions_with_tag(date, tag) -> list[int]`
-
-**Cost:** ~1 day. Low-risk. The `frozen`-as-tag semantics need care — it's the
-only tag with side-effects, so the read-only path through the UI must check it
-in every save/edit code path.
+### Still open / documentation follow-up
+- **D. Generic framing:** package is framework-neutral in architecture, but docs
+  should continue to emphasize that this is not matplotlib-only.
 
 ---
 
@@ -236,8 +158,9 @@ delegate to a facade method, format the result for Dash outputs.
 
 **Rule of thumb:** if a callback grows more than ~5 lines of inline logic,
 extract that logic into a facade method. The facade is unit-testable; the
-callback is not. The current test suite (~240 tests) exists *because* the
-facade exists.
+callback is not. The current test suite exists *because* the facade exists.
+
+This count has grown substantially; keep the testing summary below current.
 
 ### Backends
 `StorageBackend` is the abstraction; `FileSystemBackend` is the concrete
@@ -246,10 +169,100 @@ they go through the backend. A future S3 / cloud backend would slot in here
 without UI changes.
 
 ### Tests
-- `tests/gallery_viewer/` — unit + integration tests, ~240
+- `tests/gallery_viewer/` — unit tests, **299 passing**
+- `tests/integration/` — UI integration tests, **20 total**
+  - `test_workflows_ui.py` — 6 tests
+  - `test_multi_backend_ui.py` — 3 tests
+  - `test_user_stories_ui.py` — 7 tests
+  - `test_tags_ui.py` — 4 tests
+- `tests/integration/UI_TEST_PLAN.md` tracks mirrored workflows and known gaps.
 - `tests/gallery_viewer/conftest.py` — shared fixtures (`make_dir`,
   `multi_backend_gallery`, `gallery_with_chain`, `empty_gallery`)
 - Coverage strategy: aim for *thorough scenario coverage* on the facade;
   accept lower line coverage on callbacks (they're UI glue and self-checking
   visually). The right test investment is parametrized matrices over
   configurations × workflows × orderings, not exhaustive callback tests.
+
+## Requirements (merged snapshot)
+
+This section is the canonical high-level requirements view for the project.
+
+### Functional requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| F1 | Browse multiple named plots in a sidebar | Done |
+| F2 | Select date and version for each plot | Done |
+| F3 | View plot images and data tables | Done |
+| F4 | Edit the script in a syntax-highlighted editor | Done (dash-ace) |
+| F5 | Detect typed parameters and render form fields | Done |
+| F6 | Run the script and show live preview | Done |
+| F7 | Save as a new version (with confirmation + author) | Done |
+| F8 | Refresh dates/versions from disk | Done |
+| F9 | Search/filter plots by name | Done |
+| F10 | Add new plots from the dashboard | Done (with gallery.json) |
+| F11 | Pluggable storage backend | Done |
+| F12 | JSON config file (read + write) | Done |
+| F13 | Auto-discover plots from directory structure | Done |
+| F14 | Optional export button (post-process with corpframe) | Done |
+| F15 | Multi-output support (matplotlib, Plotly, DataFrames) | Done |
+| F16 | Version diff labels (parameter changes between versions) | Done |
+| F17 | Read-only mode (hide script editor) | Done |
+| F18 | Export standalone .py script | Done |
+| F19 | Author metadata on save | Done |
+| F20 | New Date button (detect uncharted data dates) | Done |
+| F21 | Copy from latest version when creating new date | Done |
+| F22 | RUN does not modify editor (injection at execution time) | Done |
+| F23 | Save uses selected date, not today | Done |
+| F24 | Save includes per-version change note (intent capture) | Done |
+| F25 | Save stamps provenance metadata (lineage/runtime context) | Done |
+| F26 | Version tags (add/remove/filter) | Done |
+| F27 | Save modal context pre-fill (author/date/version context) | Done |
+| F28 | URL deep-linking: selectors + configurator overrides via query string | Done |
+| F29 | `/render` endpoint: cached PNG bytes for `?plot=&date=&version=` | Done |
+
+### Non-functional requirements
+
+| # | Requirement | Status |
+|---|---|---|
+| N1 | No corporate-design dependency (generic) | Done |
+| N2 | Works without dash-ace (falls back to textarea) | Done |
+| N3 | Scripts execute in isolated subprocesses (60s timeout) | Done |
+| N4 | Config file writes are atomic (temp + rename) | Done |
+| N5 | Backwards-compatible with old 3-section scripts (LOAD/PLOT/SAVE) | Done |
+| N6 | Plotly is optional (works without it installed) | Done |
+
+### Backlog / future
+
+| # | Item | Status |
+|---|---|---|
+| B1 | Two-way binding: editing param fields auto-updates script AND vice versa | Backlog |
+| B2 | Delete plot / delete version from the dashboard | Backlog |
+| B3 | Authentication / access control | Backlog |
+| B4 | Git-backed storage backend | Backlog |
+| B5 | Scheduled script execution (cron-like) | Backlog |
+| B6 | Thumbnail previews in sidebar | Backlog |
+| B7 | Dirty-flag navigation warning (clientside JS + dialog flow) | Partial |
+| B8 | Live-render endpoint: `/render` runs the script with overridden params (vs current cached-only behaviour). Needs allowlist of overridable params, rate limiting, and an auth story — it's a public script-execution surface. Subprocess + 60s timeout (N3) makes it costly. Worth doing only when there's a concrete consumer. | Backlog |
+
+## URL deep-linking — design notes (revisit candidates)
+
+Implemented as F28/F29. Two choices baked in that are worth revisiting if the
+URL story expands:
+
+1. **`p.<name>` prefix for configurator overrides.** Exists only to disambiguate
+   selector keys (`plot`, `date`, `version`) from configurator params with the
+   same name (e.g. a script with `date: str = "..."`). Alternatives: a
+   reserved-word convention (drop the prefix, document that scripts cannot use
+   `plot`/`date`/`version` as param names), or a more readable prefix like
+   `script_<name>`. The current dot prefix is terse but unusual in URLs;
+   `script_` is more self-documenting. Cheap to change later — only `parse_url_state`
+   in `gallery.py` cares about the syntax.
+2. **Param overrides applied at render time, not via a separate callback.**
+   The `load_version` callback reads `gv-url-overrides` as `State` and bakes
+   override values into field defaults inside `_build_param_fields`. The
+   alternative — a second callback using pattern-matching IDs to write into
+   already-rendered `gv-param` fields — would be more decoupled but adds a
+   round-trip and another callback to reason about. Switch if URL state needs
+   to update fields *after* initial load (e.g. user changes `?p.dpi=...`
+   without reselecting the version).

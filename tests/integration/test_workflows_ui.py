@@ -232,9 +232,7 @@ def test_gallery_context_prefills_author_in_save_modal(dash_duo, tmp_path):
 # ── B3: Script with runtime error surfaces error in console ───────────────
 
 
-_CRASHING_SCRIPT = (
-    "raise ValueError('intentional test failure: do not panic')\n"
-)
+_CRASHING_SCRIPT = "raise ValueError('intentional test failure: do not panic')\n"
 
 
 def test_run_script_with_runtime_error_surfaces_in_console(dash_duo, tmp_path):
@@ -270,10 +268,9 @@ def test_run_script_with_runtime_error_surfaces_in_console(dash_duo, tmp_path):
     assert "--- ERROR ---" in console_text, (
         f"console missing ERROR marker. text={console_text!r}"
     )
-    assert (
-        "ValueError" in console_text
-        or "intentional test failure" in console_text
-    ), f"console missing actual error text. text={console_text!r}"
+    assert "ValueError" in console_text or "intentional test failure" in console_text, (
+        f"console missing actual error text. text={console_text!r}"
+    )
 
 
 # ── C1: "New date" button creates an entry from the latest template ───────

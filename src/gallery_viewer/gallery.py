@@ -30,7 +30,7 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import ALL, Input, Output, State, ctx, dash_table, dcc, html
 
-from gallery_viewer._types import OutputItem, ScriptSections
+from gallery_viewer._types import OutputItem, RunResult, ScriptSections
 from gallery_viewer.backend import FileSystemBackend, StorageBackend
 from gallery_viewer.config import (
     add_plot_to_config,
@@ -82,11 +82,11 @@ _SECTION_LABEL = {
 # (grey). ``frozen`` reads as a warning even though it's purely informational
 # — Save always creates a new version, so there's nothing to enforce.
 _TAG_COLORS = {
-    "published": "success",   # green
-    "final": "primary",       # blue
-    "frozen": "danger",       # red
-    "draft": "secondary",     # grey
-    "wip": "secondary",       # grey
+    "published": "success",  # green
+    "final": "primary",  # blue
+    "frozen": "danger",  # red
+    "draft": "secondary",  # grey
+    "wip": "secondary",  # grey
 }
 
 
@@ -154,7 +154,9 @@ def _build_sidebar_tree(names: list[str]) -> dict:
     for name in names:
         parts = name.split("/")
         if len(parts) > _MAX_TREE_DEPTH:
-            parts = parts[: _MAX_TREE_DEPTH - 1] + ["/".join(parts[_MAX_TREE_DEPTH - 1 :])]
+            parts = parts[: _MAX_TREE_DEPTH - 1] + [
+                "/".join(parts[_MAX_TREE_DEPTH - 1 :])
+            ]
         node = tree
         for segment in parts[:-1]:
             if segment not in node:
@@ -185,7 +187,9 @@ def _render_tree_node(
         children.append(
             html.Div(
                 [
-                    html.Span(chevron, style={"marginRight": "6px", "fontSize": "10px"}),
+                    html.Span(
+                        chevron, style={"marginRight": "6px", "fontSize": "10px"}
+                    ),
                     html.Span(
                         group.replace("_", " ").title(),
                         style={"fontSize": "12px", "color": "#aaa"},
@@ -396,7 +400,32 @@ class Gallery:
         )
         app.layout = self._layout()
         self._register_callbacks(app)
+        self._register_render_route(app)
         return app
+
+    def _register_render_route(self, app: dash.Dash) -> None:
+        """Mount ``/render`` returning the saved artifact bytes for a version.
+
+        Read-only lookup — serves what's already on disk via
+        :meth:`load_artifact`. Does not run scripts. The (more expensive)
+        live-run variant is documented as a future extension in CLAUDE.md.
+        """
+        from flask import Response, abort, request
+
+        @app.server.route("/render")
+        def render_artifact():  # type: ignore[unused-ignore]
+            plot = request.args.get("plot")
+            date = request.args.get("date")
+            version = request.args.get("version")
+            if not (plot and date and version):
+                abort(400, "plot, date, version are required")
+            try:
+                data = self.load_artifact(plot, date, version)
+            except (FileNotFoundError, KeyError):
+                abort(404)
+            if not data:
+                abort(404)
+            return Response(data, mimetype="image/png")
 
     def _layout(self) -> dbc.Container:
         extra = self.extra_controls or html.Div()
@@ -958,6 +987,9 @@ class Gallery:
                 dcc.Store(id="gv-plot-bytes-store"),
                 # Track the last-loaded script text for dirty detection
                 dcc.Store(id="gv-clean-script-store"),
+                # URL deep-linking — selectors + configurator param overrides
+                dcc.Location(id="gv-url", refresh=False),
+                dcc.Store(id="gv-url-overrides"),
                 # Per-session context — seeded from Gallery(context=...) at
                 # init. Multi-user deployments override via a login callback:
                 #     Output("gv-context", "data") <- {"author": username, ...}
@@ -984,18 +1016,16 @@ class Gallery:
         plot_name: str | None,
         sections: ScriptSections,
         inject_vars: dict[str, Any] | None = None,
-    ) -> "RunResult":
+    ) -> RunResult:
         """Run *sections* against *plot_name*'s backend, return ``RunResult``.
 
         Usable without a browser — no Dash state involved.
         """
-        from gallery_viewer._types import RunResult  # noqa: F401  (re-exported)
+        return self._get_backend(plot_name).run_preview(
+            sections, inject_vars=inject_vars
+        )
 
-        return self._get_backend(plot_name).run_preview(sections, inject_vars=inject_vars)
-
-    def _provenance_metadata(
-        self, plot_name: str | None, date: str
-    ) -> dict[str, str]:
+    def _provenance_metadata(self, plot_name: str | None, date: str) -> dict[str, str]:
         """Build the provenance metadata dict for stamping at save time.
 
         Always includes:
@@ -1010,7 +1040,8 @@ class Gallery:
         ``# === METADATA ===`` block.
         """
         import sys
-        from importlib.metadata import PackageNotFoundError, version as _pkg_version
+        from importlib.metadata import PackageNotFoundError
+        from importlib.metadata import version as _pkg_version
 
         meta: dict[str, str] = {}
 
@@ -1080,7 +1111,9 @@ class Gallery:
         """Return available versions for *date* under *plot_name*, ascending."""
         return self._get_backend(plot_name).list_versions(date)
 
-    def load_script(self, plot_name: str | None, date: str, version: str) -> ScriptSections:
+    def load_script(
+        self, plot_name: str | None, date: str, version: str
+    ) -> ScriptSections:
         """Load script sections for *date*/*version* under *plot_name*."""
         return self._get_backend(plot_name).load_script(date, version)
 
@@ -1088,7 +1121,9 @@ class Gallery:
         """Load a data preview DataFrame for *date* under *plot_name*."""
         return self._get_backend(plot_name).load_data(date)
 
-    def load_artifact(self, plot_name: str | None, date: str, version: str) -> bytes | None:
+    def load_artifact(
+        self, plot_name: str | None, date: str, version: str
+    ) -> bytes | None:
         """Load saved artifact bytes for *date*/*version* under *plot_name*."""
         return self._get_backend(plot_name).load_artifact(date, version)
 
@@ -1109,6 +1144,57 @@ class Gallery:
         and ``OUTPUT_PATH``; other backends may return ``{}``.
         """
         return self._get_backend(plot_name).export_inject_vars(date, version)
+
+    def parse_url_state(self, search: str) -> dict:
+        """Parse a URL query string into selectors and configurator overrides.
+
+        Recognised keys:
+
+        * ``plot``, ``date``, ``version`` — selectors. Any of these may be
+          missing; they propagate through to the UI as ``no_update``.
+        * ``p.<name>`` — configurator parameter override. Looked up against
+          the chosen ``plot``/``date``/``version``'s detected params and
+          coerced to the declared type. Unknown names and bad casts are
+          silently dropped (URLs are user-supplied; never raise).
+
+        The ``p.`` prefix exists only to disambiguate selector keys from
+        configurator params (e.g. a script with ``date: str = ...``).
+        Reconsider when revisiting URL design.
+        """
+        from urllib.parse import parse_qs
+
+        flat = {k: v[0] for k, v in parse_qs(search.lstrip("?")).items() if v}
+        plot = flat.get("plot")
+        date = flat.get("date")
+        version = flat.get("version")
+
+        overrides: dict[str, Any] = {}
+        if plot and date and version:
+            try:
+                sections = self.load_script(plot, date, version)
+            except (FileNotFoundError, KeyError):
+                sections = None
+            if sections is not None:
+                specs = detect_params(sections.configurator)
+                for k, raw in flat.items():
+                    if not k.startswith("p."):
+                        continue
+                    spec = specs.get(k[2:])
+                    if spec is None or spec.annotation is None:
+                        continue
+                    try:
+                        if spec.annotation is bool:
+                            overrides[k[2:]] = raw.lower() in ("1", "true", "yes")
+                        else:
+                            overrides[k[2:]] = spec.annotation(raw)
+                    except (ValueError, TypeError):
+                        pass
+        return {
+            "plot": plot,
+            "date": date,
+            "version": version,
+            "param_overrides": overrides,
+        }
 
     def apply_params_to_script(
         self, script_text: str, param_values: list | None
@@ -1162,9 +1248,7 @@ class Gallery:
             return (f"v{version} — no parameter changes from v{prev_version}", "#777")
         return (f"v{version} — " + ", ".join(diff), "#8cb4d5")
 
-    def change_note(
-        self, plot_name: str | None, date: str, version: str
-    ) -> str | None:
+    def change_note(self, plot_name: str | None, date: str, version: str) -> str | None:
         """Return the ``change`` metadata field for *version*, if any.
 
         This is the per-version "what changed in this save?" rationale (the
@@ -1266,9 +1350,7 @@ class Gallery:
                     if desc:
                         descriptions[name] = desc
             tree = _build_sidebar_tree(names)
-            return _render_tree_node(
-                tree, collapsed or [], active_plot, descriptions
-            )
+            return _render_tree_node(tree, collapsed or [], active_plot, descriptions)
 
         # -- Toggle group collapse/expand --
         @app.callback(
@@ -1340,7 +1422,9 @@ class Gallery:
                 return [], None, [], None
             dates = self.list_dates(plot_name)
             date_opts = [{"label": d, "value": d} for d in dates]
-            date_val = current_date if current_date in dates else (dates[0] if dates else None)
+            date_val = (
+                current_date if current_date in dates else (dates[0] if dates else None)
+            )
             versions = self.list_versions(plot_name, date_val) if date_val else []
             ver_opts = [{"label": f"v{v}", "value": v} for v in versions]
             ver_val = versions[-1] if versions else None
@@ -1361,6 +1445,24 @@ class Gallery:
             opts = [{"label": f"v{v}", "value": v} for v in versions]
             return opts, versions[-1] if versions else None
 
+        # -- URL deep-link → selectors + override store (initial load + nav) --
+        @app.callback(
+            Output("gv-plot-select", "data", allow_duplicate=True),
+            Output("gv-date", "value", allow_duplicate=True),
+            Output("gv-version", "value", allow_duplicate=True),
+            Output("gv-url-overrides", "data"),
+            Input("gv-url", "search"),
+            prevent_initial_call="initial_duplicate",
+        )
+        def apply_url(search):
+            state = self.parse_url_state(search or "")
+            return (
+                state["plot"] or dash.no_update,
+                state["date"] or dash.no_update,
+                state["version"] or dash.no_update,
+                state["param_overrides"] or None,
+            )
+
         # -- Load script + data + plot + detect params --
         @app.callback(
             Output("gv-editor-script", "value"),
@@ -1372,19 +1474,29 @@ class Gallery:
             Input("gv-date", "value"),
             Input("gv-version", "value"),
             State("gv-plot-select", "data"),
+            State("gv-url-overrides", "data"),
         )
-        def load_version(date, version, plot_name):
+        def load_version(date, version, plot_name, url_overrides):
             if not date or not version:
                 return (*(dash.no_update,) * 6,)
             version = str(version)
             sections = self.load_script(plot_name, date, version)
             script_text = sections.to_text()
-            param_fields = _build_param_fields(sections.configurator)
+            param_fields = _build_param_fields(
+                sections.configurator, overrides=url_overrides
+            )
             data_children = _data_table(self.load_data(plot_name, date))
             plot_bytes = self.load_artifact(plot_name, date, version)
             plot_children = _plot_img(plot_bytes)
             b64 = base64.b64encode(plot_bytes).decode() if plot_bytes else None
-            return script_text, param_fields, data_children, plot_children, b64, script_text
+            return (
+                script_text,
+                param_fields,
+                data_children,
+                plot_children,
+                b64,
+                script_text,
+            )
 
         # -- RUN button --
         @app.callback(
@@ -1491,7 +1603,12 @@ class Gallery:
             elif isinstance(trigger, dict) and trigger.get("type") == "gv-tag-remove":
                 # Avoid spurious removes when n_clicks=0 (initial render).
                 if not any(remove_clicks):
-                    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+                    return (
+                        dash.no_update,
+                        dash.no_update,
+                        dash.no_update,
+                        dash.no_update,
+                    )
                 tag_to_remove = trigger["index"]
                 self.remove_tag(plot_name, date, version, tag_to_remove)
             else:
@@ -1541,7 +1658,9 @@ class Gallery:
                 versions = all_versions
             options = [{"label": f"v{v}", "value": v} for v in versions]
             new_value = (
-                current_version if current_version in versions else (versions[-1] if versions else None)
+                current_version
+                if current_version in versions
+                else (versions[-1] if versions else None)
             )
             return options, new_value
 
@@ -1597,8 +1716,13 @@ class Gallery:
             prevent_initial_call=True,
         )
         def save_version(
-            n_clicks, script_code, param_values, plot_name,
-            selected_date, author, change_note,
+            n_clicks,
+            script_code,
+            param_values,
+            plot_name,
+            selected_date,
+            author,
+            change_note,
         ):
             if not script_code:
                 return (
@@ -1613,8 +1737,11 @@ class Gallery:
             sections = self.apply_params_to_script(script_code, param_values)
 
             new_version = self.save_script(
-                plot_name, save_date, sections,
-                author=author, change_note=change_note,
+                plot_name,
+                save_date,
+                sections,
+                author=author,
+                change_note=change_note,
             )
 
             console = (
@@ -1780,7 +1907,9 @@ class Gallery:
             State("gv-plot-select", "data"),
             prevent_initial_call=True,
         )
-        def export_standalone(n_clicks, script_code, param_values, date, version, plot_name):
+        def export_standalone(
+            n_clicks, script_code, param_values, date, version, plot_name
+        ):
             if not script_code:
                 return dash.no_update
             sections = ScriptSections.from_text(script_code)
@@ -1788,9 +1917,13 @@ class Gallery:
             inject = _param_values_to_inject(sections.configurator, param_values) or {}
             inject["date"] = date or "unknown"
             inject["version"] = int(version) if version else 0
-            inject.update(self.export_inject_vars(plot_name, date or "unknown", version or "0"))
+            inject.update(
+                self.export_inject_vars(plot_name, date or "unknown", version or "0")
+            )
             standalone = sections.to_full(inject_vars=inject)
-            filename = f"script_{date}_v{version}.py" if date and version else "script.py"
+            filename = (
+                f"script_{date}_v{version}.py" if date and version else "script.py"
+            )
             return dcc.send_string(standalone, filename)
 
         # -- Export (only if export_fn provided) --
@@ -1883,20 +2016,29 @@ def _param_values_to_inject(
     return inject or None
 
 
-def _build_param_fields(configurator_source: str) -> list:
-    """Detect typed params and build input fields for them."""
+def _build_param_fields(
+    configurator_source: str, overrides: dict | None = None
+) -> list:
+    """Detect typed params and build input fields for them.
+
+    ``overrides`` (e.g. from URL deep-linking) replace the configurator's
+    declared defaults on a per-name basis. Unknown override names are
+    ignored — defaults still come from the script.
+    """
     params = detect_params(configurator_source)
     if not params:
         return []
 
+    overrides = overrides or {}
     fields = []
     for name, spec in params.items():
         label = name.replace("_", " ").title()
+        default = overrides.get(name, spec.default)
         if spec.annotation is bool:
             field = dbc.Checkbox(
                 id={"type": "gv-param", "name": name},
                 label=label,
-                value=bool(spec.default),
+                value=bool(default),
                 style={"marginBottom": "4px"},
             )
         elif spec.annotation in (int, float):
@@ -1906,7 +2048,7 @@ def _build_param_fields(configurator_source: str) -> list:
                     dbc.Input(
                         id={"type": "gv-param", "name": name},
                         type="number",
-                        value=spec.default,
+                        value=default,
                         size="sm",
                         style={"marginBottom": "4px"},
                     ),
@@ -1919,7 +2061,7 @@ def _build_param_fields(configurator_source: str) -> list:
                     dbc.Input(
                         id={"type": "gv-param", "name": name},
                         type="text",
-                        value=str(spec.default),
+                        value=str(default),
                         size="sm",
                         style={"marginBottom": "4px"},
                     ),
@@ -1989,7 +2131,9 @@ def _render_outputs(items: list[OutputItem]):
         return _no_plot()
     if len(children) == 1:
         return children[0]
-    return html.Div(children, style={"display": "flex", "flexDirection": "column", "gap": "12px"})
+    return html.Div(
+        children, style={"display": "flex", "flexDirection": "column", "gap": "12px"}
+    )
 
 
 def _plot_img(plot_bytes: bytes | None):

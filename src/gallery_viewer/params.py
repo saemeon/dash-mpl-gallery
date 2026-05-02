@@ -120,7 +120,11 @@ def diff_configurator(old_source: str, new_source: str) -> list[str]:
             changes.append(f"+{name}={new_val.default!r}")
         elif old_val is not None and new_val is None:
             changes.append(f"-{name}")
-        elif old_val is not None and new_val is not None and old_val.default != new_val.default:
+        elif (
+            old_val is not None
+            and new_val is not None
+            and old_val.default != new_val.default
+        ):
             changes.append(f"{name}: {old_val.default!r} → {new_val.default!r}")
     return changes
 

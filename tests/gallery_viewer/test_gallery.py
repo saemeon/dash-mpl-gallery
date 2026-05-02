@@ -656,7 +656,9 @@ def _make_gallery_dir(root, name, *, dates_versions=None):
     (d / "plots").mkdir()
     (d / "scripts").mkdir()
     for date, n_versions in dates_versions.items():
-        pd.DataFrame({"x": [1], "y": [2]}).to_csv(d / "data" / f"data_{date}.csv", index=False)
+        pd.DataFrame({"x": [1], "y": [2]}).to_csv(
+            d / "data" / f"data_{date}.csv", index=False
+        )
         for v in range(1, n_versions + 1):
             sections = ScriptSections(
                 configurator=f'name: str = "{name}"\nversion: int = {v}',
@@ -868,6 +870,7 @@ class TestProvenance:
         # e.g. "# python: 3.14.4"
         assert "# python: " in saved
         import sys
+
         assert f"{sys.version_info.major}.{sys.version_info.minor}" in saved
 
     def test_data_hash_stamped_when_data_exists(self, tmp_gallery):
@@ -968,8 +971,11 @@ class TestProvenance:
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
         g.save_script(
-            None, "20240101", ScriptSections(code="print(1)"),
-            author="Alice", change_note="why",
+            None,
+            "20240101",
+            ScriptSections(code="print(1)"),
+            author="Alice",
+            change_note="why",
         )
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
@@ -992,9 +998,11 @@ class TestIntentCapture:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        sections = ScriptSections(configurator="x: int = 1", code="print(1)")
         g.save_script(
-            None, "20240101", sections,
+            None,
+            "20240101",
+            sections,
             author="Alice",
             change_note="Switched to log scale because small categories were buried.",
         )
@@ -1008,9 +1016,11 @@ class TestIntentCapture:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        sections = ScriptSections(configurator="x: int = 1", code="print(1)")
         g.save_script(
-            None, "20240101", sections,
+            None,
+            "20240101",
+            sections,
             author="A",
             change_note="line one\nline two\nline three",
         )
@@ -1026,7 +1036,7 @@ class TestIntentCapture:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        sections = ScriptSections(configurator="x: int = 1", code="print(1)")
         g.save_script(None, "20240101", sections, author="A")
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
@@ -1037,7 +1047,7 @@ class TestIntentCapture:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        sections = ScriptSections(configurator="x: int = 1", code="print(1)")
         g.save_script(None, "20240101", sections, author="A", change_note="   ")
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
@@ -1048,7 +1058,7 @@ class TestIntentCapture:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        sections = ScriptSections(configurator="x: int = 1", code="print(1)")
         g.save_script(None, "20240101", sections, change_note="why this version")
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest).to_text()
@@ -1058,7 +1068,7 @@ class TestIntentCapture:
     def test_with_metadata_preserves_order(self):
         from gallery_viewer._types import ScriptSections
 
-        s = ScriptSections(configurator='x: int = 1', code="print(1)")
+        s = ScriptSections(configurator="x: int = 1", code="print(1)")
         result = s.with_metadata({"first": "a", "second": "b", "third": "c"})
         # Insertion order preserved in the metadata dict and in the rendered text
         assert list(result.metadata.keys()) == ["first", "second", "third"]
@@ -1071,7 +1081,7 @@ class TestIntentCapture:
     def test_with_metadata_empty_values_skipped(self):
         from gallery_viewer._types import ScriptSections
 
-        s = ScriptSections(configurator='x: int = 1', code="print(1)")
+        s = ScriptSections(configurator="x: int = 1", code="print(1)")
         result = s.with_metadata({"skip": "", "keep": "value", "also_skip": None})
         assert "skip" not in result.metadata
         assert "also_skip" not in result.metadata
@@ -1080,7 +1090,7 @@ class TestIntentCapture:
     def test_with_metadata_empty_dict_returns_unchanged(self):
         from gallery_viewer._types import ScriptSections
 
-        s = ScriptSections(configurator='x: int = 1', code="print(1)")
+        s = ScriptSections(configurator="x: int = 1", code="print(1)")
         result = s.with_metadata({})
         assert result.metadata == {}
         assert result.configurator == s.configurator
@@ -1098,8 +1108,11 @@ class TestIntentCapture:
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
         g.save_script(
-            None, "20240101", ScriptSections(code="print(1)"),
-            author="Alice", change_note="why this version exists",
+            None,
+            "20240101",
+            ScriptSections(code="print(1)"),
+            author="Alice",
+            change_note="why this version exists",
         )
         latest = g.list_versions(None, "20240101")[-1]
         assert g.change_note(None, "20240101", latest) == "why this version exists"
@@ -1119,9 +1132,7 @@ class TestIntentCapture:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        g.save_script(
-            None, "20240101", ScriptSections(code="print(1)"), author="Alice"
-        )
+        g.save_script(None, "20240101", ScriptSections(code="print(1)"), author="Alice")
         latest = g.list_versions(None, "20240101")[-1]
         assert g.author(None, "20240101", latest) == "Alice"
 
@@ -1150,7 +1161,7 @@ class TestContextRegistration:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend, context={"author": "Paul"})
-        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        sections = ScriptSections(configurator="x: int = 1", code="print(1)")
         g.save_script(None, "20240101", sections, author=None)
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
@@ -1161,7 +1172,7 @@ class TestContextRegistration:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend, context={"author": "Paul"})
-        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        sections = ScriptSections(configurator="x: int = 1", code="print(1)")
         g.save_script(None, "20240101", sections, author="Alice")
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
@@ -1173,7 +1184,7 @@ class TestContextRegistration:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend, context={"author": "Paul"})
-        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        sections = ScriptSections(configurator="x: int = 1", code="print(1)")
         g.save_script(None, "20240101", sections, author="   ")  # whitespace only
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
@@ -1184,7 +1195,7 @@ class TestContextRegistration:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        sections = ScriptSections(configurator="x: int = 1", code="print(1)")
         g.save_script(None, "20240101", sections, author=None)
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
@@ -1195,7 +1206,7 @@ class TestContextRegistration:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend, context={"author": "Paul", "env": "prod"})
-        sections = ScriptSections(configurator='x: int = 1', code="print(1)")
+        sections = ScriptSections(configurator="x: int = 1", code="print(1)")
         g.save_script(None, "20240101", sections)
         latest = g.list_versions(None, "20240101")[-1]
         saved = backend.load_script("20240101", latest)
@@ -1211,8 +1222,8 @@ class TestContextRegistration:
 
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend, context={"author": "Paul"})
-        s1 = ScriptSections(configurator='x: int = 1', code="print(1)")
-        s2 = ScriptSections(configurator='x: int = 2', code="print(2)")
+        s1 = ScriptSections(configurator="x: int = 1", code="print(1)")
+        s2 = ScriptSections(configurator="x: int = 2", code="print(2)")
         g.save_script(None, "20240101", s1)  # → Paul
         g.context["author"] = "Alice"
         g.save_script(None, "20240101", s2)  # → Alice
@@ -1239,13 +1250,17 @@ class TestApplyParamsToScript:
 
     def test_no_param_values_returns_original(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
-        script = '# === CONFIGURATOR ===\ntitle: str = "x"\n\n# === CODE ===\nprint(title)\n'
+        script = (
+            '# === CONFIGURATOR ===\ntitle: str = "x"\n\n# === CODE ===\nprint(title)\n'
+        )
         result = g.apply_params_to_script(script, [])
         assert "x" in result.configurator
 
     def test_none_param_values_does_not_crash(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
-        script = '# === CONFIGURATOR ===\ntitle: str = "x"\n\n# === CODE ===\nprint(title)\n'
+        script = (
+            '# === CONFIGURATOR ===\ntitle: str = "x"\n\n# === CODE ===\nprint(title)\n'
+        )
         result = g.apply_params_to_script(script, None)
         assert isinstance(result, ScriptSections)
 
@@ -1261,6 +1276,49 @@ class TestApplyParamsToScript:
         result = g.apply_params_to_script(script, [42])
         assert "print(x)" in result.code
         assert 'print("hi")' in result.code
+
+
+class TestParseUrlState:
+    def test_empty_search_returns_no_selectors(self, gallery_with_chain):
+        state = gallery_with_chain.parse_url_state("")
+        assert state == {
+            "plot": None, "date": None, "version": None, "param_overrides": {},
+        }
+
+    def test_selectors_extracted(self, gallery_with_chain):
+        state = gallery_with_chain.parse_url_state(
+            "?plot=main&date=20240101&version=2"
+        )
+        assert state["plot"] == "main"
+        assert state["date"] == "20240101"
+        assert state["version"] == "2"
+
+    def test_param_overrides_coerced_to_declared_types(self, gallery_with_chain):
+        # chain script defines: name: str, version: int
+        state = gallery_with_chain.parse_url_state(
+            "?plot=main&date=20240101&version=2&p.name=Q4&p.version=99"
+        )
+        assert state["param_overrides"] == {"name": "Q4", "version": 99}
+
+    def test_unknown_param_silently_ignored(self, gallery_with_chain):
+        state = gallery_with_chain.parse_url_state(
+            "?plot=main&date=20240101&version=2&p.does_not_exist=foo"
+        )
+        assert state["param_overrides"] == {}
+
+    def test_bad_cast_dropped(self, gallery_with_chain):
+        # version is int — "not-a-number" can't be coerced
+        state = gallery_with_chain.parse_url_state(
+            "?plot=main&date=20240101&version=2&p.version=not-a-number"
+        )
+        assert state["param_overrides"] == {}
+
+    def test_no_overrides_without_full_selectors(self, gallery_with_chain):
+        # missing version → can't resolve param schema → overrides skipped
+        state = gallery_with_chain.parse_url_state(
+            "?plot=main&date=20240101&p.name=Q4"
+        )
+        assert state["param_overrides"] == {}
 
 
 # ---------------------------------------------------------------------------
@@ -1397,7 +1455,7 @@ class TestErrorPaths:
         (d / "data").mkdir()
         (d / "plots").mkdir()
         (d / "scripts").mkdir()
-        v2 = ScriptSections(configurator='x: int = 1', code="print(1)")
+        v2 = ScriptSections(configurator="x: int = 1", code="print(1)")
         (d / "scripts" / "script_20240101_v2.py").write_text(v2.to_text())
 
         g = Gallery(backend=FileSystemBackend(d))
@@ -1411,7 +1469,9 @@ class TestErrorPaths:
         with pytest.raises(StopIteration):
             empty_gallery.list_dates(None)
 
-    def test_export_inject_vars_with_missing_plot_falls_back(self, multi_backend_gallery):
+    def test_export_inject_vars_with_missing_plot_falls_back(
+        self, multi_backend_gallery
+    ):
         """Unknown plot_name falls back to the first backend (consistent with _get_backend)."""
         # 'gamma' doesn't exist; should return alpha's paths (first in dict)
         result = multi_backend_gallery.export_inject_vars("gamma", "20240101", "1")
@@ -1526,8 +1586,8 @@ class TestWorkflowOrders:
 
         d = _make_gallery_dir(tmp_path, "main")
         g = Gallery(backend=FileSystemBackend(d))
-        s1 = ScriptSections(configurator='x: int = 1', code="print(1)")
-        s2 = ScriptSections(configurator='x: int = 2', code="print(2)")
+        s1 = ScriptSections(configurator="x: int = 1", code="print(1)")
+        s2 = ScriptSections(configurator="x: int = 2", code="print(2)")
         v_first = g.save_script(None, "20240101", s1, author="A")
         v_second = g.save_script(None, "20240101", s2, author="B")
         assert v_first == "2"
@@ -1577,7 +1637,7 @@ class TestWorkflowOrders:
         """Saving on one backend leaves the other untouched."""
         from gallery_viewer._types import ScriptSections
 
-        s = ScriptSections(configurator='x: int = 99', code="print(99)")
+        s = ScriptSections(configurator="x: int = 99", code="print(99)")
         multi_backend_gallery.save_script("alpha", "20240101", s, author="A")
         assert multi_backend_gallery.list_versions("alpha", "20240101") == ["1", "2"]
         assert multi_backend_gallery.list_versions("beta", "20240101") == ["1"]
@@ -1599,7 +1659,7 @@ class TestWorkflowOrders:
 
         d = _make_gallery_dir(tmp_path, "main")
         g = Gallery(backend=FileSystemBackend(d))
-        s = ScriptSections(configurator='x: int = 1', code="x = 1\nprint(x)")
+        s = ScriptSections(configurator="x: int = 1", code="x = 1\nprint(x)")
         starting_versions = g.list_versions(None, "20240101")
         save_count = 0
         for op in ops:
@@ -1629,9 +1689,7 @@ class TestVersionSequences:
     @pytest.mark.parametrize("n_versions", [1, 2, 3, 5, 10])
     def test_list_versions_dense_chain(self, tmp_path, n_versions):
         """A dense chain v1..vN lists all N versions in order."""
-        d = _make_gallery_dir(
-            tmp_path, "main", dates_versions={"20240101": n_versions}
-        )
+        d = _make_gallery_dir(tmp_path, "main", dates_versions={"20240101": n_versions})
         g = Gallery(backend=FileSystemBackend(d))
         versions = g.list_versions(None, "20240101")
         assert versions == [str(i) for i in range(1, n_versions + 1)]
@@ -1646,14 +1704,14 @@ class TestVersionSequences:
         g.save_script(
             None,
             "20240101",
-            ScriptSections(configurator='x: int = 2', code="print(2)"),
+            ScriptSections(configurator="x: int = 2", code="print(2)"),
             author="A",
         )
         # save v3 with another config change
         g.save_script(
             None,
             "20240101",
-            ScriptSections(configurator='x: int = 3', code="print(3)"),
+            ScriptSections(configurator="x: int = 3", code="print(3)"),
             author="B",
         )
         diff_v2 = g.version_diff(None, "20240101", "2")

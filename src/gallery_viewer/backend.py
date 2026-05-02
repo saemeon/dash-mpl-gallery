@@ -114,15 +114,9 @@ class StorageBackend:
 
     def versions_with_tag(self, date: str, tag: str) -> list[str]:
         """Return versions of *date* carrying *tag*, in ``list_versions`` order."""
-        return [
-            v
-            for v in self.list_versions(date)
-            if tag in self.list_tags(date, v)
-        ]
+        return [v for v in self.list_versions(date) if tag in self.list_tags(date, v)]
 
-    def _write_script(
-        self, date: str, version: str, sections: ScriptSections
-    ) -> None:
+    def _write_script(self, date: str, version: str, sections: ScriptSections) -> None:
         """Overwrite the stored script for *date*/*version* with *sections*.
 
         Used by :meth:`add_tag` / :meth:`remove_tag` to mutate an existing
@@ -324,7 +318,9 @@ def _run_sections(
             for entry in manifest:
                 file_path = out_dir / entry["file"]
                 if file_path.exists():
-                    items.append(OutputItem(mime=entry["mime"], data=file_path.read_bytes()))
+                    items.append(
+                        OutputItem(mime=entry["mime"], data=file_path.read_bytes())
+                    )
         except (json.JSONDecodeError, KeyError):
             pass
 
@@ -490,9 +486,7 @@ class FileSystemBackend(StorageBackend):
 
     # -- In-place writes (for tag edits) ------------------------------------
 
-    def _write_script(
-        self, date: str, version: str, sections: ScriptSections
-    ) -> None:
+    def _write_script(self, date: str, version: str, sections: ScriptSections) -> None:
         """Overwrite the stored script file with *sections*.
 
         Does **not** re-run the script — used only for metadata-only mutations
@@ -501,9 +495,7 @@ class FileSystemBackend(StorageBackend):
         """
         path = self.scripts_dir / f"script_{date}_v{version}.py"
         if not path.exists():
-            raise FileNotFoundError(
-                f"No saved script for {date}/v{version} at {path}"
-            )
+            raise FileNotFoundError(f"No saved script for {date}/v{version} at {path}")
         path.write_text(sections.to_text())
 
     # -- Execution (override to set cwd) ------------------------------------
