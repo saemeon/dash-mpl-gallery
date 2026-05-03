@@ -129,6 +129,32 @@ feature.
   save flows auto-fill current user identity.
 - **E. Tags:** versions support free-form tags (`published`, `final`, `draft`,
   `wip`, `frozen`, etc.) in frontmatter and UI filtering workflows.
+- **F. Branch-click gallery view:** clicking a tree group opens a card grid
+  in the right panel — direct leaves render as cards (name + description +
+  glyph), sub-groups render as drillable folder cards (name + recursive
+  leaf count). Clicking a leaf returns to the existing script detail view.
+  Addresses story #8 ("the new collaborator — what's going on?") by making
+  the structure of a populated directory legible without forcing the visitor
+  to scan the sidebar one item at a time. Real composite thumbnails
+  (mosaic of latest leaf PNGs) are deliberately deferred — v1 uses a glyph.
+
+  Two implementation choices worth knowing if you extend this:
+
+  1. **Card ids reuse the tree ids.** Leaf cards use
+     ``{"type": "gv-nav-item", "index": <name>}`` and subfolder cards use
+     ``{"type": "gv-tree-group", "index": <path>}`` — identical to the
+     sidebar entries. The existing pattern-matching handlers (``nav_click``
+     and ``toggle_group``) catch card clicks for free, so adding the gallery
+     required no new click callbacks. If you change card ids, you also have
+     to wire up parallel callbacks.
+  2. **``gv-active-group`` is the single source of truth for view mode.**
+     Empty string = leaf-detail mode (the existing ``load_version`` callback
+     owns ``gv-output-panel``). Non-empty = gallery mode (the
+     ``render_gallery_panel`` callback owns it). The gallery callback
+     returns ``no_update`` when the store is empty so the two callbacks
+     don't race over the panel — they take turns based on store state.
+     ``toggle_group`` writes the path on group click; ``nav_click`` clears
+     it on leaf click.
 
 ### Still open / documentation follow-up
 - **D. Generic framing:** package is framework-neutral in architecture, but docs
@@ -169,7 +195,8 @@ they go through the backend. A future S3 / cloud backend would slot in here
 without UI changes.
 
 ### Tests
-- `tests/gallery_viewer/` — unit tests, **299 passing**
+- `tests/gallery_viewer/` — unit tests, **320 passing** (includes 21 for the
+  branch-click gallery view in `test_gallery_view.py`)
 - `tests/integration/` — UI integration tests, **20 total**
   - `test_workflows_ui.py` — 6 tests
   - `test_multi_backend_ui.py` — 3 tests
@@ -220,6 +247,7 @@ This section is the canonical high-level requirements view for the project.
 | F27 | Save modal context pre-fill (author/date/version context) | Done |
 | F28 | URL deep-linking: selectors + configurator overrides via query string | Done |
 | F29 | `/render` endpoint: cached PNG bytes for `?plot=&date=&version=` | Done |
+| F30 | Branch-click gallery view (cards for direct leaves + drillable subfolders) | Done |
 
 ### Non-functional requirements
 

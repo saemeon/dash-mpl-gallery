@@ -8,9 +8,9 @@ to plug in company-specific storage (S3, database, git, ...).
 directory layout::
 
     base_dir/
-        data/   data_{date}.csv
-        plots/  plot_{date}_v{version}.png
-        scripts/script_{date}_v{version}.py
+        data/   data_{group}.csv
+        plots/  plot_{group}_v{version}.png
+        scripts/script_{group}_v{version}.py
 
 Script execution uses a **manifest-based capture** system: after running the
 user's code, an epilogue introspects the namespace for matplotlib figures,
@@ -28,7 +28,6 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
-from datetime import date as _date
 from pathlib import Path
 
 import pandas as pd
@@ -44,31 +43,31 @@ class StorageBackend:
 
     # -- Discovery -----------------------------------------------------------
 
-    def list_dates(self) -> list[str]:
-        """Return available dates, newest first."""
+    def list_groups(self) -> list[str]:
+        """Return available groups, newest first."""
         return []
 
-    def list_versions(self, date: str) -> list[str]:
-        """Return available versions for *date*, ascending."""
+    def list_versions(self, group: str) -> list[str]:
+        """Return available versions for *group*, ascending."""
         return []
 
     # -- Loading -------------------------------------------------------------
 
-    def load_script(self, date: str, version: str) -> ScriptSections:
-        """Load script content for a given date/version."""
+    def load_script(self, group: str, version: str) -> ScriptSections:
+        """Load script content for a given group/version."""
         return ScriptSections()
 
-    def load_data(self, date: str) -> pd.DataFrame | None:
-        """Load a data preview for *date* (may return ``None``)."""
+    def load_data(self, group: str) -> pd.DataFrame | None:
+        """Load a data preview for *group* (may return ``None``)."""
         return None
 
-    def load_artifact(self, date: str, version: str) -> bytes | None:
-        """Load the saved artifact (e.g. image bytes) for *date*/*version*."""
+    def load_artifact(self, group: str, version: str) -> bytes | None:
+        """Load the saved artifact (e.g. image bytes) for *group*/*version*."""
         return None
 
     # -- Saving --------------------------------------------------------------
 
-    def save_version(self, date: str, sections: ScriptSections) -> str:
+    def save_version(self, group: str, sections: ScriptSections) -> str:
         """Persist *sections* and return the new version identifier."""
         raise NotImplementedError
 
@@ -80,44 +79,44 @@ class StorageBackend:
     # in-place writer (``_write_script``) so subclasses only need to override
     # the writer.
 
-    def list_tags(self, date: str, version: str) -> list[str]:
-        """Return tags attached to *date*/*version*, in insertion order."""
-        return list(self.load_script(date, version).tags)
+    def list_tags(self, group: str, version: str) -> list[str]:
+        """Return tags attached to *group*/*version*, in insertion order."""
+        return list(self.load_script(group, version).tags)
 
-    def add_tag(self, date: str, version: str, tag: str) -> list[str]:
-        """Attach *tag* to *date*/*version* in place. Returns the new tag list.
+    def add_tag(self, group: str, version: str, tag: str) -> list[str]:
+        """Attach *tag* to *group*/*version* in place. Returns the new tag list.
 
         Idempotent: adding an existing tag is a no-op. Whitespace is stripped.
         """
         tag = tag.strip()
         if not tag:
-            return self.list_tags(date, version)
-        sections = self.load_script(date, version)
+            return self.list_tags(group, version)
+        sections = self.load_script(group, version)
         if tag in sections.tags:
             return list(sections.tags)
         sections = sections.with_tags([tag])
-        self._write_script(date, version, sections)
+        self._write_script(group, version, sections)
         return list(sections.tags)
 
-    def remove_tag(self, date: str, version: str, tag: str) -> list[str]:
-        """Remove *tag* from *date*/*version* in place. Returns the new tag list.
+    def remove_tag(self, group: str, version: str, tag: str) -> list[str]:
+        """Remove *tag* from *group*/*version* in place. Returns the new tag list.
 
         Silently no-ops if the tag isn't present.
         """
-        sections = self.load_script(date, version)
+        sections = self.load_script(group, version)
         if tag not in sections.tags:
             return list(sections.tags)
         new_tags = [t for t in sections.tags if t != tag]
         sections = sections.with_tags(new_tags, replace=True)
-        self._write_script(date, version, sections)
+        self._write_script(group, version, sections)
         return list(sections.tags)
 
-    def versions_with_tag(self, date: str, tag: str) -> list[str]:
-        """Return versions of *date* carrying *tag*, in ``list_versions`` order."""
-        return [v for v in self.list_versions(date) if tag in self.list_tags(date, v)]
+    def versions_with_tag(self, group: str, tag: str) -> list[str]:
+        """Return versions of *group* carrying *tag*, in ``list_versions`` order."""
+        return [v for v in self.list_versions(group) if tag in self.list_tags(group, v)]
 
-    def _write_script(self, date: str, version: str, sections: ScriptSections) -> None:
-        """Overwrite the stored script for *date*/*version* with *sections*.
+    def _write_script(self, group: str, version: str, sections: ScriptSections) -> None:
+        """Overwrite the stored script for *group*/*version* with *sections*.
 
         Used by :meth:`add_tag` / :meth:`remove_tag` to mutate an existing
         version's metadata in place without re-running the script. The base
@@ -146,33 +145,33 @@ class StorageBackend:
         """Run Configurator + Code + Save, return result."""
         return _run_sections(sections, include_save=True, inject_vars=inject_vars)
 
-    def list_uncharted_dates(self) -> list[str]:
-        """Return data dates that have no scripts yet, newest first."""
+    def list_uncharted_groups(self) -> list[str]:
+        """Return data groups that have no scripts yet, newest first."""
         return []
 
     # -- Templates -----------------------------------------------------------
 
-    def template_for_date(self, date: str) -> ScriptSections:
-        """Return a script template for *date*, copying from the latest existing version.
+    def template_for_group(self, group: str) -> ScriptSections:
+        """Return a script template for *group*, copying from the latest existing version.
 
-        Picks the newest prior date, then its latest version.
-        Falls back to ``starter_template(date)`` if no prior versions exist.
-        Override to customise how new-date templates are seeded.
+        Picks the newest prior group, then its latest version.
+        Falls back to ``starter_template(group)`` if no prior versions exist.
+        Override to customise how new-group templates are seeded.
         """
-        for prev_date in self.list_dates():
-            versions = self.list_versions(prev_date)
+        for prev_group in self.list_groups():
+            versions = self.list_versions(prev_group)
             if not versions:
                 continue
-            sections = self.load_script(prev_date, versions[-1])
+            sections = self.load_script(prev_group, versions[-1])
             return ScriptSections(
                 configurator=sections.configurator,
-                code=sections.code.replace(f'"{prev_date}"', f'"{date}"'),
+                code=sections.code.replace(f'"{prev_group}"', f'"{group}"'),
                 save=sections.save,
             )
-        return self.starter_template(date)
+        return self.starter_template(group)
 
-    def starter_template(self, date: str) -> ScriptSections:
-        """Return a blank starter script for a new date (override for branding)."""
+    def starter_template(self, group: str) -> ScriptSections:
+        """Return a blank starter script for a new group (override for branding)."""
         return ScriptSections(
             code=(
                 "import pandas as pd\n"
@@ -186,7 +185,7 @@ class StorageBackend:
             ),
         )
 
-    def export_inject_vars(self, date: str, version: str) -> dict[str, str]:
+    def export_inject_vars(self, group: str, version: str) -> dict[str, str]:
         """Return path-related variables to inject into a standalone export script.
 
         Override in filesystem-backed implementations to provide ``BASE_DIR``
@@ -195,8 +194,8 @@ class StorageBackend:
         """
         return {}
 
-    def data_hash(self, date: str) -> str | None:
-        """Return a content hash of the data file for *date*, or ``None``.
+    def data_hash(self, group: str) -> str | None:
+        """Return a content hash of the data file for *group*, or ``None``.
 
         The hash is used for provenance stamping ("what data produced this
         chart?"). The default returns ``None`` — backends without an obvious
@@ -348,22 +347,22 @@ class FileSystemBackend(StorageBackend):
     base_dir :
         Root directory containing data/, plots/, scripts/ subdirectories.
     data_pattern :
-        Regex with a ``date`` group for data files.
+        Regex with a ``group`` named-capture for data files.
     script_pattern :
-        Regex with ``date`` and ``version`` groups for script files.
+        Regex with ``group`` and ``version`` named-captures for script files.
     plot_pattern :
-        Regex with ``date`` and ``version`` groups for plot files.
+        Regex with ``group`` and ``version`` named-captures for plot files.
     starter_template_fn :
-        Optional callable ``(date, base_dir) -> ScriptSections`` for custom
+        Optional callable ``(group, base_dir) -> ScriptSections`` for custom
         script templates.
     """
 
     def __init__(
         self,
         base_dir: str | Path = ".",
-        data_pattern: str = r"data_(?P<date>\d{8})\.(csv|parquet)$",
-        script_pattern: str = r"script_(?P<date>\d{8})_v(?P<version>\d+)\.py$",
-        plot_pattern: str = r"plot_(?P<date>\d{8})_v(?P<version>\d+)\.png$",
+        data_pattern: str = r"data_(?P<group>[^.]+?)\.(csv|parquet)$",
+        script_pattern: str = r"script_(?P<group>.+?)_v(?P<version>\d+)\.py$",
+        plot_pattern: str = r"plot_(?P<group>.+?)_v(?P<version>\d+)\.png$",
         starter_template_fn: Callable[[str, Path], ScriptSections] | None = None,
     ):
         self.base_dir = Path(base_dir).resolve()
@@ -406,53 +405,53 @@ class FileSystemBackend(StorageBackend):
 
     # -- Discovery -----------------------------------------------------------
 
-    def list_dates(self) -> list[str]:
-        dates: set[str] = set()
+    def list_groups(self) -> list[str]:
+        groups: set[str] = set()
         if self.data_dir.exists():
             for f in self.data_dir.iterdir():
                 m = self._data_re.match(f.name)
                 if m:
-                    dates.add(m.group("date"))
+                    groups.add(m.group("group"))
         if self.scripts_dir.exists():
             for f in self.scripts_dir.iterdir():
                 m = self._script_re.match(f.name)
                 if m:
-                    dates.add(m.group("date"))
-        return sorted(dates, reverse=True)
+                    groups.add(m.group("group"))
+        return sorted(groups, reverse=True)
 
-    def list_versions(self, date: str) -> list[str]:
+    def list_versions(self, group: str) -> list[str]:
         versions: list[int] = []
         if self.scripts_dir.exists():
             for f in self.scripts_dir.iterdir():
                 m = self._script_re.match(f.name)
-                if m and m.group("date") == date:
+                if m and m.group("group") == group:
                     versions.append(int(m.group("version")))
         return [str(v) for v in sorted(versions)] or ["1"]
 
     # -- Loading -------------------------------------------------------------
 
-    def load_script(self, date: str, version: str) -> ScriptSections:
-        path = self.scripts_dir / f"script_{date}_v{version}.py"
+    def load_script(self, group: str, version: str) -> ScriptSections:
+        path = self.scripts_dir / f"script_{group}_v{version}.py"
         if path.exists():
             return ScriptSections.from_text(path.read_text())
-        return self.starter_template(date)
+        return self.starter_template(group)
 
-    def load_data(self, date: str) -> pd.DataFrame | None:
+    def load_data(self, group: str) -> pd.DataFrame | None:
         for ext in ("csv", "parquet"):
-            p = self.data_dir / f"data_{date}.{ext}"
+            p = self.data_dir / f"data_{group}.{ext}"
             if p.exists():
                 return pd.read_parquet(p) if ext == "parquet" else pd.read_csv(p)
         return None
 
-    def load_artifact(self, date: str, version: str) -> bytes | None:
-        path = self.artifacts_dir / f"plot_{date}_v{version}.png"
+    def load_artifact(self, group: str, version: str) -> bytes | None:
+        path = self.artifacts_dir / f"plot_{group}_v{version}.png"
         if path.exists():
             return path.read_bytes()
         return None
 
     # -- Saving --------------------------------------------------------------
 
-    def save_version(self, date: str, sections: ScriptSections) -> str:
+    def save_version(self, group: str, sections: ScriptSections) -> str:
         self.scripts_dir.mkdir(parents=True, exist_ok=True)
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -460,18 +459,18 @@ class FileSystemBackend(StorageBackend):
         if self.scripts_dir.exists():
             for f in self.scripts_dir.iterdir():
                 m = self._script_re.match(f.name)
-                if m and m.group("date") == date:
+                if m and m.group("group") == group:
                     existing.append(int(m.group("version")))
         new_version = max(existing, default=0) + 1
 
         # Save the script as-is (clean, no patching)
-        path = self.scripts_dir / f"script_{date}_v{new_version}.py"
+        path = self.scripts_dir / f"script_{group}_v{new_version}.py"
         path.write_text(sections.to_text())
 
-        # Inject date/version/paths as execution-time variables
-        plot_path = self.artifacts_dir / f"plot_{date}_v{new_version}.png"
+        # Inject group/version/paths as execution-time variables
+        plot_path = self.artifacts_dir / f"plot_{group}_v{new_version}.png"
         inject = {
-            "date": date,
+            "group": group,
             "version": new_version,
             "BASE_DIR": str(self.base_dir),
             "OUTPUT_PATH": str(plot_path),
@@ -486,16 +485,16 @@ class FileSystemBackend(StorageBackend):
 
     # -- In-place writes (for tag edits) ------------------------------------
 
-    def _write_script(self, date: str, version: str, sections: ScriptSections) -> None:
+    def _write_script(self, group: str, version: str, sections: ScriptSections) -> None:
         """Overwrite the stored script file with *sections*.
 
         Does **not** re-run the script — used only for metadata-only mutations
         like adding/removing tags. The plot artifact is left untouched, since
         tags are pure labels and don't change script output.
         """
-        path = self.scripts_dir / f"script_{date}_v{version}.py"
+        path = self.scripts_dir / f"script_{group}_v{version}.py"
         if not path.exists():
-            raise FileNotFoundError(f"No saved script for {date}/v{version} at {path}")
+            raise FileNotFoundError(f"No saved script for {group}/v{version} at {path}")
         path.write_text(sections.to_text())
 
     # -- Execution (override to set cwd) ------------------------------------
@@ -518,51 +517,51 @@ class FileSystemBackend(StorageBackend):
             sections, include_save=True, cwd=self.base_dir, inject_vars=inject_vars
         )
 
-    def list_uncharted_dates(self) -> list[str]:
-        data_dates: set[str] = set()
+    def list_uncharted_groups(self) -> list[str]:
+        data_groups: set[str] = set()
         if self.data_dir.exists():
             for f in self.data_dir.iterdir():
                 m = self._data_re.match(f.name)
                 if m:
-                    data_dates.add(m.group("date"))
-        script_dates: set[str] = set()
+                    data_groups.add(m.group("group"))
+        script_groups: set[str] = set()
         if self.scripts_dir.exists():
             for f in self.scripts_dir.iterdir():
                 m = self._script_re.match(f.name)
                 if m:
-                    script_dates.add(m.group("date"))
-        return sorted(data_dates - script_dates, reverse=True)
+                    script_groups.add(m.group("group"))
+        return sorted(data_groups - script_groups, reverse=True)
 
     # -- Templates -----------------------------------------------------------
 
-    def export_inject_vars(self, date: str, version: str) -> dict[str, str]:
+    def export_inject_vars(self, group: str, version: str) -> dict[str, str]:
         return {
             "BASE_DIR": str(self.base_dir),
-            "OUTPUT_PATH": str(self.artifacts_dir / f"plot_{date}_v{version}.png"),
+            "OUTPUT_PATH": str(self.artifacts_dir / f"plot_{group}_v{version}.png"),
         }
 
-    def data_hash(self, date: str) -> str | None:
-        """Return ``"sha256:<hex>"`` of the data file for *date*, or ``None``.
+    def data_hash(self, group: str) -> str | None:
+        """Return ``"sha256:<hex>"`` of the data file for *group*, or ``None``.
 
-        Looks for ``data/data_{date}.csv`` then ``data/data_{date}.parquet``.
+        Looks for ``data/data_{group}.csv`` then ``data/data_{group}.parquet``.
         Returns ``None`` if neither exists.
         """
         import hashlib
 
         for ext in ("csv", "parquet"):
-            p = self.data_dir / f"data_{date}.{ext}"
+            p = self.data_dir / f"data_{group}.{ext}"
             if p.exists():
                 h = hashlib.sha256(p.read_bytes()).hexdigest()
                 return f"sha256:{h}"
         return None
 
-    def starter_template(self, date: str) -> ScriptSections:
+    def starter_template(self, group: str) -> ScriptSections:
         if self._starter_template_fn is not None:
-            return self._starter_template_fn(date, self.base_dir)
+            return self._starter_template_fn(group, self.base_dir)
 
-        data_path = self.data_dir / f"data_{date}.csv"
+        data_path = self.data_dir / f"data_{group}.csv"
         return ScriptSections(
-            configurator=(f'title: str = "{date}"\ndpi: int = 100'),
+            configurator=(f'title: str = "{group}"\ndpi: int = 100'),
             code=(
                 "import pandas as pd\n"
                 "import matplotlib\n"
@@ -571,7 +570,7 @@ class FileSystemBackend(StorageBackend):
                 "from pathlib import Path\n"
                 "\n"
                 f'BASE_DIR = Path(r"{self.base_dir}")\n'
-                f'date = "{date}"\n'
+                f'group = "{group}"\n'
                 "\n"
                 f'df = pd.read_csv(r"{data_path}")\n'
                 "\n"
@@ -584,7 +583,7 @@ class FileSystemBackend(StorageBackend):
                 "plt.tight_layout()"
             ),
             save=(
-                "# The gallery injects: date, version, BASE_DIR, OUTPUT_PATH\n"
+                "# The gallery injects: group, version, BASE_DIR, OUTPUT_PATH\n"
                 "# Add optional post-processing here (e.g. extra exports).\n"
                 "# The plot image is saved automatically by the gallery."
             ),

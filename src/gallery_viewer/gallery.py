@@ -259,6 +259,165 @@ def _render_tree_node(
 
 
 # ---------------------------------------------------------------------------
+# Gallery view (branch click → cards of direct leaves + subfolder drill-ins)
+# ---------------------------------------------------------------------------
+
+
+def _descend_to_group(tree: dict, group_path: str) -> dict | None:
+    """Walk *tree* by the slash-delimited *group_path*; return the subtree.
+
+    ``group_path == ""`` returns the root tree. Returns ``None`` if any
+    segment along the path is missing.
+    """
+    if not group_path:
+        return tree
+    node: dict = tree
+    for segment in group_path.split("/"):
+        nxt = node.get(segment)
+        if not isinstance(nxt, dict):
+            return None
+        node = nxt
+    return node
+
+
+def _count_descendant_leaves(node: dict) -> int:
+    """Total number of leaves in *node* and all its sub-groups."""
+    total = len(node.get("__leaves__", []))
+    for k, v in node.items():
+        if k == "__leaves__":
+            continue
+        if isinstance(v, dict):
+            total += _count_descendant_leaves(v)
+    return total
+
+
+def _gallery_card_style() -> dict:
+    return {
+        "backgroundColor": "#2a2a2a",
+        "border": "1px solid #444",
+        "borderRadius": "6px",
+        "padding": "12px",
+        "cursor": "pointer",
+        "userSelect": "none",
+        "display": "flex",
+        "flexDirection": "column",
+        "gap": "6px",
+        "minHeight": "120px",
+    }
+
+
+def _leaf_card(name: str, description: str) -> Any:
+    """Render a leaf as a clickable gallery card.
+
+    Reuses ``gv-nav-item`` ids so the existing leaf-click callback handles
+    drilling into the script detail view — no extra wiring required.
+    """
+    label = name.rsplit("/", 1)[-1].replace("_", " ").title()
+    return html.Div(
+        [
+            html.Div(
+                "\U0001f4c4",  # page glyph (placeholder; mosaic thumbs deferred)
+                style={"fontSize": "28px", "color": "#888"},
+            ),
+            html.Div(
+                label,
+                style={
+                    "fontWeight": "bold",
+                    "fontSize": "13px",
+                    "color": "#e0e0e0",
+                },
+            ),
+            html.Div(
+                description or "",
+                style={"fontSize": "11px", "color": "#888"},
+            ),
+        ],
+        id={"type": "gv-nav-item", "index": name},
+        n_clicks=0,
+        style=_gallery_card_style(),
+    )
+
+
+def _subfolder_card(group_path: str, leaf_count: int) -> Any:
+    """Render a sub-group as a clickable card showing its leaf count.
+
+    Reuses ``gv-tree-group`` ids so the existing group-click callback drives
+    the drill-down (setting the new active group and showing its gallery).
+    """
+    label = group_path.rsplit("/", 1)[-1].replace("_", " ").title()
+    return html.Div(
+        [
+            html.Div("\U0001f4c1", style={"fontSize": "28px"}),  # folder glyph
+            html.Div(
+                label,
+                style={
+                    "fontWeight": "bold",
+                    "fontSize": "13px",
+                    "color": "#e0e0e0",
+                },
+            ),
+            html.Div(
+                f"{leaf_count} item{'s' if leaf_count != 1 else ''}",
+                style={"fontSize": "11px", "color": "#888"},
+            ),
+        ],
+        id={"type": "gv-tree-group", "index": group_path},
+        n_clicks=0,
+        style=_gallery_card_style(),
+    )
+
+
+def _render_gallery_view(
+    tree: dict, group_path: str, descriptions: dict[str, str]
+) -> Any:
+    """Render the gallery (subfolder cards + leaf cards) for *group_path*.
+
+    Returns a ``html.Div`` of cards, or a placeholder if the group is empty
+    or missing.
+    """
+    node = _descend_to_group(tree, group_path)
+    if node is None:
+        return html.Span(
+            f"Group not found: {group_path}", style={"color": "#888"}
+        )
+
+    cards: list = []
+    sub_keys = [k for k in node if k != "__leaves__"]
+    for sub in sub_keys:
+        sub_path = f"{group_path}/{sub}" if group_path else sub
+        cards.append(_subfolder_card(sub_path, _count_descendant_leaves(node[sub])))
+    for leaf in node.get("__leaves__", []):
+        cards.append(_leaf_card(leaf, descriptions.get(leaf, "")))
+
+    if not cards:
+        return html.Span("Empty group", style={"color": "#666"})
+
+    title = group_path.replace("_", " ").replace("/", " / ").title() or "All"
+    return html.Div(
+        [
+            html.Div(
+                title,
+                style={
+                    "color": "#aaa",
+                    "fontSize": "12px",
+                    "textTransform": "uppercase",
+                    "letterSpacing": "0.06em",
+                    "marginBottom": "8px",
+                },
+            ),
+            html.Div(
+                cards,
+                style={
+                    "display": "grid",
+                    "gridTemplateColumns": "repeat(auto-fill, minmax(180px, 1fr))",
+                    "gap": "12px",
+                },
+            ),
+        ]
+    )
+
+
+# ---------------------------------------------------------------------------
 # Gallery
 # ---------------------------------------------------------------------------
 
@@ -270,14 +429,14 @@ class Gallery:
     Supports multi-output rendering (matplotlib PNGs, Plotly JSON, DataFrames),
     version diff labels showing parameter changes between versions, standalone
     ``.py`` export, author metadata on save, read-only mode via a script
-    visibility toggle, and a "New Date" button for data dates lacking scripts.
+    visibility toggle, and a "New Group" button for data groups lacking scripts.
 
     Parameters
     ----------
     backend :
         Single storage backend (for one-plot galleries).
     backends :
-        Dict of ``{plot_name: StorageBackend}`` for multi-plot galleries.
+        Dict of ``{item_id: StorageBackend}`` for multi-plot galleries.
         Mutually exclusive with ``backend``.
     title :
         Dashboard title shown in the header.
@@ -584,6 +743,11 @@ class Gallery:
                                 ),
                                 dcc.Store(id="gv-gallery-items"),
                                 dcc.Store(id="gv-sidebar-collapsed", data=[]),
+                                # Active gallery branch — "" means "no
+                                # branch active, show the leaf detail view".
+                                # Set when a tree group / subfolder card is
+                                # clicked; cleared when a leaf is clicked.
+                                dcc.Store(id="gv-active-group", data=""),
                             ],
                         ),
                         # ── EDITOR ────────────────────────────────────────
@@ -603,7 +767,7 @@ class Gallery:
                                                     },
                                                 ),
                                                 dcc.Dropdown(
-                                                    id="gv-date",
+                                                    id="gv-group",
                                                     placeholder=f"Select {self.group_label.lower()}...",
                                                     clearable=False,
                                                     style={"marginBottom": "6px"},
@@ -659,7 +823,7 @@ class Gallery:
                                                 ),
                                                 dbc.Button(
                                                     "+",
-                                                    id="gv-new-date-btn",
+                                                    id="gv-new-group-btn",
                                                     color="secondary",
                                                     size="sm",
                                                     n_clicks=0,
@@ -1041,19 +1205,19 @@ class Gallery:
 
     def run_script(
         self,
-        plot_name: str | None,
+        item_id: str | None,
         sections: ScriptSections,
         inject_vars: dict[str, Any] | None = None,
     ) -> RunResult:
-        """Run *sections* against *plot_name*'s backend, return ``RunResult``.
+        """Run *sections* against *item_id*'s backend, return ``RunResult``.
 
         Usable without a browser — no Dash state involved.
         """
-        return self._get_backend(plot_name).run_preview(
+        return self._get_backend(item_id).run_preview(
             sections, inject_vars=inject_vars
         )
 
-    def _provenance_metadata(self, plot_name: str | None, date: str) -> dict[str, str]:
+    def _provenance_metadata(self, item_id: str | None, group: str) -> dict[str, str]:
         """Build the provenance metadata dict for stamping at save time.
 
         Always includes:
@@ -1073,7 +1237,7 @@ class Gallery:
 
         meta: dict[str, str] = {}
 
-        data_hash = self._get_backend(plot_name).data_hash(date)
+        data_hash = self._get_backend(item_id).data_hash(group)
         if data_hash:
             meta["data_hash"] = data_hash
 
@@ -1093,13 +1257,13 @@ class Gallery:
 
     def save_script(
         self,
-        plot_name: str | None,
-        date: str,
+        item_id: str | None,
+        group: str,
         sections: ScriptSections,
         author: str | None = None,
         change_note: str | None = None,
     ) -> str:
-        """Persist *sections* for *date* under *plot_name*'s backend.
+        """Persist *sections* for *group* under *item_id*'s backend.
 
         Stamps a ``# === METADATA ===`` block at the top of the script:
 
@@ -1126,52 +1290,52 @@ class Gallery:
         # Provenance: data hash, Python version, tracked package versions.
         # Stamped after the human-facing fields so the file reads top-down:
         # who, why, then what-environment.
-        meta.update(self._provenance_metadata(plot_name, date))
+        meta.update(self._provenance_metadata(item_id, group))
         if meta:
             sections = sections.with_metadata(meta)
-        return self._get_backend(plot_name).save_version(date, sections)
+        return self._get_backend(item_id).save_version(group, sections)
 
-    def list_dates(self, plot_name: str | None = None) -> list[str]:
-        """Return available dates for *plot_name*, newest first."""
-        return self._get_backend(plot_name).list_dates()
+    def list_groups(self, item_id: str | None = None) -> list[str]:
+        """Return available groups for *item_id*, newest first."""
+        return self._get_backend(item_id).list_groups()
 
-    def list_versions(self, plot_name: str | None, date: str) -> list[str]:
-        """Return available versions for *date* under *plot_name*, ascending."""
-        return self._get_backend(plot_name).list_versions(date)
+    def list_versions(self, item_id: str | None, group: str) -> list[str]:
+        """Return available versions for *group* under *item_id*, ascending."""
+        return self._get_backend(item_id).list_versions(group)
 
     def load_script(
-        self, plot_name: str | None, date: str, version: str
+        self, item_id: str | None, group: str, version: str
     ) -> ScriptSections:
-        """Load script sections for *date*/*version* under *plot_name*."""
-        return self._get_backend(plot_name).load_script(date, version)
+        """Load script sections for *group*/*version* under *item_id*."""
+        return self._get_backend(item_id).load_script(group, version)
 
-    def load_data(self, plot_name: str | None, date: str):
-        """Load a data preview DataFrame for *date* under *plot_name*."""
-        return self._get_backend(plot_name).load_data(date)
+    def load_data(self, item_id: str | None, group: str):
+        """Load a data preview DataFrame for *group* under *item_id*."""
+        return self._get_backend(item_id).load_data(group)
 
     def load_artifact(
-        self, plot_name: str | None, date: str, version: str
+        self, item_id: str | None, group: str, version: str
     ) -> bytes | None:
-        """Load saved artifact bytes for *date*/*version* under *plot_name*."""
-        return self._get_backend(plot_name).load_artifact(date, version)
+        """Load saved artifact bytes for *group*/*version* under *item_id*."""
+        return self._get_backend(item_id).load_artifact(group, version)
 
-    def template_for_date(self, plot_name: str | None, date: str) -> ScriptSections:
-        """Return a starter template for *date*, seeded from the latest existing version."""
-        return self._get_backend(plot_name).template_for_date(date)
+    def template_for_group(self, item_id: str | None, group: str) -> ScriptSections:
+        """Return a starter template for *group*, seeded from the latest existing version."""
+        return self._get_backend(item_id).template_for_group(group)
 
-    def list_uncharted_dates(self, plot_name: str | None = None) -> list[str]:
-        """Return data dates that have no scripts yet, newest first."""
-        return self._get_backend(plot_name).list_uncharted_dates()
+    def list_uncharted_groups(self, item_id: str | None = None) -> list[str]:
+        """Return data groups that have no scripts yet, newest first."""
+        return self._get_backend(item_id).list_uncharted_groups()
 
     def export_inject_vars(
-        self, plot_name: str | None, date: str, version: str
+        self, item_id: str | None, group: str, version: str
     ) -> dict[str, str]:
         """Return path-related inject vars for a standalone export script.
 
         Delegates to the backend — ``FileSystemBackend`` returns ``BASE_DIR``
         and ``OUTPUT_PATH``; other backends may return ``{}``.
         """
-        return self._get_backend(plot_name).export_inject_vars(date, version)
+        return self._get_backend(item_id).export_inject_vars(group, version)
 
     def parse_url_state(self, search: str) -> dict:
         """Parse a URL query string into selectors and configurator overrides.
@@ -1245,7 +1409,7 @@ class Gallery:
             sections = sections.with_params(inject)
         return sections
 
-    def version_diff(self, plot_name: str | None, date: str, version: str) -> list[str]:
+    def version_diff(self, item_id: str | None, group: str, version: str) -> list[str]:
         """Return human-readable parameter changes between *version* and the one before it.
 
         Returns an empty list for v1 (no predecessor) or when nothing changed.
@@ -1253,12 +1417,12 @@ class Gallery:
         if version == "1":
             return []
         prev = str(int(version) - 1)
-        current = self.load_script(plot_name, date, version)
-        previous = self.load_script(plot_name, date, prev)
+        current = self.load_script(item_id, group, version)
+        previous = self.load_script(item_id, group, prev)
         return diff_configurator(previous.configurator, current.configurator)
 
     def version_diff_label(
-        self, plot_name: str | None, date: str, version: str
+        self, item_id: str | None, group: str, version: str
     ) -> tuple[str, str]:
         """Return ``(text, color)`` describing the diff between *version* and v_{n-1}.
 
@@ -1275,12 +1439,12 @@ class Gallery:
         if version == "1":
             return ("v1 — initial version", "#777")
         prev_version = str(int(version) - 1)
-        diff = self.version_diff(plot_name, date, version)
+        diff = self.version_diff(item_id, group, version)
         if not diff:
             return (f"v{version} — no parameter changes from v{prev_version}", "#777")
         return (f"v{version} — " + ", ".join(diff), "#8cb4d5")
 
-    def change_note(self, plot_name: str | None, date: str, version: str) -> str | None:
+    def change_note(self, item_id: str | None, group: str, version: str) -> str | None:
         """Return the ``change`` metadata field for *version*, if any.
 
         This is the per-version "what changed in this save?" rationale (the
@@ -1288,13 +1452,13 @@ class Gallery:
         ``gv-save-description``).  Returns ``None`` when the script has no
         change note (e.g. v1, or a version saved without one).
         """
-        sections = self.load_script(plot_name, date, version)
+        sections = self.load_script(item_id, group, version)
         note = sections.metadata.get("change")
         return note or None
 
-    def author(self, plot_name: str | None, date: str, version: str) -> str | None:
+    def author(self, item_id: str | None, group: str, version: str) -> str | None:
         """Return the ``author`` metadata field for *version*, if any."""
-        sections = self.load_script(plot_name, date, version)
+        sections = self.load_script(item_id, group, version)
         return sections.metadata.get("author") or None
 
     # -- Tag facade ----------------------------------------------------------
@@ -1306,38 +1470,38 @@ class Gallery:
     # informational — the save path always creates a new version by
     # construction, so there's nothing to enforce.
 
-    def list_tags(self, plot_name: str | None, date: str, version: str) -> list[str]:
-        """Return tags attached to *date*/*version* under *plot_name*."""
-        return self._get_backend(plot_name).list_tags(date, version)
+    def list_tags(self, item_id: str | None, group: str, version: str) -> list[str]:
+        """Return tags attached to *group*/*version* under *item_id*."""
+        return self._get_backend(item_id).list_tags(group, version)
 
     def add_tag(
-        self, plot_name: str | None, date: str, version: str, tag: str
+        self, item_id: str | None, group: str, version: str, tag: str
     ) -> list[str]:
-        """Attach *tag* to *date*/*version* in place. Returns new tag list."""
-        return self._get_backend(plot_name).add_tag(date, version, tag)
+        """Attach *tag* to *group*/*version* in place. Returns new tag list."""
+        return self._get_backend(item_id).add_tag(group, version, tag)
 
     def remove_tag(
-        self, plot_name: str | None, date: str, version: str, tag: str
+        self, item_id: str | None, group: str, version: str, tag: str
     ) -> list[str]:
-        """Remove *tag* from *date*/*version* in place. Returns new tag list."""
-        return self._get_backend(plot_name).remove_tag(date, version, tag)
+        """Remove *tag* from *group*/*version* in place. Returns new tag list."""
+        return self._get_backend(item_id).remove_tag(group, version, tag)
 
     def versions_with_tag(
-        self, plot_name: str | None, date: str, tag: str
+        self, item_id: str | None, group: str, tag: str
     ) -> list[str]:
-        """Return versions of *date* carrying *tag*, ascending."""
-        return self._get_backend(plot_name).versions_with_tag(date, tag)
+        """Return versions of *group* carrying *tag*, ascending."""
+        return self._get_backend(item_id).versions_with_tag(group, tag)
 
-    def all_tags(self, plot_name: str | None, date: str) -> list[str]:
-        """Return the union of tags across all versions of *date*, sorted.
+    def all_tags(self, item_id: str | None, group: str) -> list[str]:
+        """Return the union of tags across all versions of *group*, sorted.
 
         Used to populate the tag-filter dropdown — only tags that actually
         exist on disk show up.
         """
-        backend = self._get_backend(plot_name)
+        backend = self._get_backend(item_id)
         seen: list[str] = []
-        for v in backend.list_versions(date):
-            for t in backend.list_tags(date, v):
+        for v in backend.list_versions(group):
+            for t in backend.list_tags(group, v):
                 if t not in seen:
                     seen.append(t)
         return sorted(seen)
@@ -1346,10 +1510,10 @@ class Gallery:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _get_backend(self, plot_name: str | None) -> StorageBackend:
+    def _get_backend(self, item_id: str | None) -> StorageBackend:
         """Resolve plot name to backend, fallback to first."""
-        if plot_name and plot_name in self.backends:
-            return self.backends[plot_name]
+        if item_id and item_id in self.backends:
+            return self.backends[item_id]
         return next(iter(self.backends.values()))
 
     # ------------------------------------------------------------------
@@ -1384,103 +1548,133 @@ class Gallery:
             tree = _build_sidebar_tree(names)
             return _render_tree_node(tree, collapsed or [], active_plot, descriptions)
 
-        # -- Toggle group collapse/expand --
+        # -- Tree-group click: toggle collapse AND mark group active --
+        # Active-group state drives the gallery view in the right panel
+        # (see render_gallery_panel below). Subfolder cards inside the
+        # gallery share the same id type, so drilling in works for free.
         @app.callback(
             Output("gv-sidebar-collapsed", "data"),
+            Output("gv-active-group", "data", allow_duplicate=True),
             Input({"type": "gv-tree-group", "index": ALL}, "n_clicks"),
             State("gv-sidebar-collapsed", "data"),
             prevent_initial_call=True,
         )
         def toggle_group(n_clicks_list, collapsed):
             if not any(n_clicks_list):
-                return dash.no_update
+                return dash.no_update, dash.no_update
             triggered = ctx.triggered_id
             if triggered is None:
-                return dash.no_update
+                return dash.no_update, dash.no_update
             group_path = triggered["index"]
             collapsed = list(collapsed or [])
             if group_path in collapsed:
                 collapsed.remove(group_path)
             else:
                 collapsed.append(group_path)
-            return collapsed
+            return collapsed, group_path
 
-        # -- Click nav item → select plot, load its dates --
+        # -- Render gallery view in the right panel when a branch is active --
+        # Empty active_group means "show leaf detail" — let load_version
+        # drive the panel as before.
+        @app.callback(
+            Output("gv-output-panel", "children", allow_duplicate=True),
+            Output("gv-data-panel", "children", allow_duplicate=True),
+            Input("gv-active-group", "data"),
+            prevent_initial_call=True,
+        )
+        def render_gallery_panel(active_group):
+            if not active_group:
+                return dash.no_update, dash.no_update
+            descriptions: dict[str, str] = {}
+            if self._config_path:
+                config = load_config(self._config_path)
+                plots_cfg = config.get("plots", {})
+                for name, cfg in plots_cfg.items():
+                    desc = cfg.get("description", "")
+                    if desc:
+                        descriptions[name] = desc
+            tree = _build_sidebar_tree(self.plot_names)
+            return _render_gallery_view(tree, active_group, descriptions), _no_data()
+
+        # -- Click nav item → select plot, load its groups, exit gallery --
+        # Clearing gv-active-group restores the leaf detail view in the
+        # right panel (see render_gallery_panel below).
         @app.callback(
             Output("gv-plot-select", "data", allow_duplicate=True),
-            Output("gv-date", "options"),
-            Output("gv-date", "value"),
+            Output("gv-group", "options"),
+            Output("gv-group", "value"),
+            Output("gv-active-group", "data", allow_duplicate=True),
             Input({"type": "gv-nav-item", "index": dash.ALL}, "n_clicks"),
             prevent_initial_call=True,
         )
         def nav_click(n_clicks_list):
             if not any(n_clicks_list):
-                return dash.no_update, dash.no_update, dash.no_update
+                return (dash.no_update,) * 4
             triggered = ctx.triggered_id
             if triggered is None:
-                return dash.no_update, dash.no_update, dash.no_update
-            plot_name = triggered["index"]
-            dates = self.list_dates(plot_name)
-            opts = [{"label": d, "value": d} for d in dates]
-            return plot_name, opts, (dates[0] if dates else None)
+                return (dash.no_update,) * 4
+            item_id = triggered["index"]
+            groups = self.list_groups(item_id)
+            opts = [{"label": d, "value": d} for d in groups]
+            return item_id, opts, (groups[0] if groups else None), ""
 
-        # -- Also load dates on initial plot select --
+        # -- Also load groups on initial plot select --
         @app.callback(
-            Output("gv-date", "options", allow_duplicate=True),
-            Output("gv-date", "value", allow_duplicate=True),
+            Output("gv-group", "options", allow_duplicate=True),
+            Output("gv-group", "value", allow_duplicate=True),
             Input("gv-plot-select", "data"),
             prevent_initial_call="initial_duplicate",
         )
-        def init_dates_for_plot(plot_name):
-            if not plot_name:
+        def init_groups_for_plot(item_id):
+            if not item_id:
                 return [], None
-            dates = self.list_dates(plot_name)
-            opts = [{"label": d, "value": d} for d in dates]
-            return opts, (dates[0] if dates else None)
+            groups = self.list_groups(item_id)
+            opts = [{"label": d, "value": d} for d in groups]
+            return opts, (groups[0] if groups else None)
 
-        # -- Refresh button → reload dates + versions for current plot --
+        # -- Refresh button → reload groups + versions for current plot --
         @app.callback(
-            Output("gv-date", "options", allow_duplicate=True),
-            Output("gv-date", "value", allow_duplicate=True),
+            Output("gv-group", "options", allow_duplicate=True),
+            Output("gv-group", "value", allow_duplicate=True),
             Output("gv-version", "options", allow_duplicate=True),
             Output("gv-version", "value", allow_duplicate=True),
             Input("gv-refresh-btn", "n_clicks"),
             State("gv-plot-select", "data"),
-            State("gv-date", "value"),
+            State("gv-group", "value"),
             prevent_initial_call=True,
         )
-        def refresh_dates(n_clicks, plot_name, current_date):
-            if not plot_name:
+        def refresh_groups(n_clicks, item_id, current_group):
+            if not item_id:
                 return [], None, [], None
-            dates = self.list_dates(plot_name)
-            date_opts = [{"label": d, "value": d} for d in dates]
-            date_val = (
-                current_date if current_date in dates else (dates[0] if dates else None)
+            groups = self.list_groups(item_id)
+            group_opts = [{"label": d, "value": d} for d in groups]
+            group_val = (
+                current_group if current_group in groups else (groups[0] if groups else None)
             )
-            versions = self.list_versions(plot_name, date_val) if date_val else []
+            versions = self.list_versions(item_id, group_val) if group_val else []
             ver_opts = [{"label": f"v{v}", "value": v} for v in versions]
             ver_val = versions[-1] if versions else None
-            return date_opts, date_val, ver_opts, ver_val
+            return group_opts, group_val, ver_opts, ver_val
 
-        # -- Update version dropdown when date changes --
+        # -- Update version dropdown when group changes --
         @app.callback(
             Output("gv-version", "options"),
             Output("gv-version", "value", allow_duplicate=True),
-            Input("gv-date", "value"),
+            Input("gv-group", "value"),
             State("gv-plot-select", "data"),
             prevent_initial_call=True,
         )
-        def update_versions(date, plot_name):
-            if not date:
+        def update_versions(group, item_id):
+            if not group:
                 return [], None
-            versions = self.list_versions(plot_name, date)
+            versions = self.list_versions(item_id, group)
             opts = [{"label": f"v{v}", "value": v} for v in versions]
             return opts, versions[-1] if versions else None
 
         # -- URL deep-link → selectors + override store (initial load + nav) --
         @app.callback(
             Output("gv-plot-select", "data", allow_duplicate=True),
-            Output("gv-date", "value", allow_duplicate=True),
+            Output("gv-group", "value", allow_duplicate=True),
             Output("gv-version", "value", allow_duplicate=True),
             Output("gv-url-overrides", "data"),
             Input("gv-url", "search"),
@@ -1503,22 +1697,22 @@ class Gallery:
             Output("gv-output-panel", "children"),
             Output("gv-plot-bytes-store", "data"),
             Output("gv-clean-script-store", "data"),
-            Input("gv-date", "value"),
+            Input("gv-group", "value"),
             Input("gv-version", "value"),
             State("gv-plot-select", "data"),
             State("gv-url-overrides", "data"),
         )
-        def load_version(date, version, plot_name, url_overrides):
-            if not date or not version:
+        def load_version(group, version, item_id, url_overrides):
+            if not group or not version:
                 return (*(dash.no_update,) * 6,)
             version = str(version)
-            sections = self.load_script(plot_name, date, version)
+            sections = self.load_script(item_id, group, version)
             script_text = sections.to_text()
             param_fields = _build_param_fields(
                 sections.configurator, overrides=url_overrides
             )
-            data_children = _data_table(self.load_data(plot_name, date))
-            plot_bytes = self.load_artifact(plot_name, date, version)
+            data_children = _data_table(self.load_data(item_id, group))
+            plot_bytes = self.load_artifact(item_id, group, version)
             plot_children = _plot_img(plot_bytes)
             b64 = base64.b64encode(plot_bytes).decode() if plot_bytes else None
             return (
@@ -1541,12 +1735,12 @@ class Gallery:
             State("gv-plot-select", "data"),
             prevent_initial_call=True,
         )
-        def run_script(n_clicks, script_code, param_values, plot_name):
+        def run_script(n_clicks, script_code, param_values, item_id):
             if not script_code:
                 return "Nothing to run.", _no_plot(), None
             sections = ScriptSections.from_text(script_code)
             inject = _param_values_to_inject(sections.configurator, param_values)
-            result = self.run_script(plot_name, sections, inject_vars=inject)
+            result = self.run_script(item_id, sections, inject_vars=inject)
             console = result.output
             if not result.success:
                 console += f"\n--- ERROR ---\n{result.error}"
@@ -1562,14 +1756,14 @@ class Gallery:
             Output("gv-tags-row", "children"),
             Output("gv-tag-filter", "options"),
             Input("gv-version", "value"),
-            State("gv-date", "value"),
+            State("gv-group", "value"),
             State("gv-plot-select", "data"),
         )
-        def update_tags_row(version, date, plot_name):
-            if not date or not version:
+        def update_tags_row(version, group, item_id):
+            if not group or not version:
                 return [], []
-            tags = self.list_tags(plot_name, date, version)
-            all_tags = self.all_tags(plot_name, date)
+            tags = self.list_tags(item_id, group, version)
+            all_tags = self.all_tags(item_id, group)
             tag_badges = [_tag_badge(t) for t in tags]
             tag_options = [{"label": t, "value": t} for t in all_tags]
             return tag_badges, tag_options
@@ -1581,15 +1775,15 @@ class Gallery:
             Input("gv-edit-tags-btn", "n_clicks"),
             Input("gv-edit-tags-done", "n_clicks"),
             State("gv-edit-tags-modal", "is_open"),
-            State("gv-date", "value"),
+            State("gv-group", "value"),
             State("gv-version", "value"),
             State("gv-plot-select", "data"),
         )
-        def toggle_edit_tags_modal(n_edit, n_done, is_open, date, version, plot_name):
+        def toggle_edit_tags_modal(n_edit, n_done, is_open, group, version, item_id):
             trigger = ctx.triggered_id
             if trigger == "gv-edit-tags-btn" and not is_open:
-                if date and version:
-                    tags = self.list_tags(plot_name, date, version)
+                if group and version:
+                    tags = self.list_tags(item_id, group, version)
                     tag_list = [
                         dbc.Badge(
                             [
@@ -1621,17 +1815,17 @@ class Gallery:
             Input("gv-add-tag-btn", "n_clicks"),
             Input({"type": "gv-tag-remove", "index": ALL}, "n_clicks"),
             State("gv-new-tag-input", "value"),
-            State("gv-date", "value"),
+            State("gv-group", "value"),
             State("gv-version", "value"),
             State("gv-plot-select", "data"),
             prevent_initial_call=True,
         )
-        def manage_tags(add_clicks, remove_clicks, new_tag, date, version, plot_name):
-            if not date or not version:
+        def manage_tags(add_clicks, remove_clicks, new_tag, group, version, item_id):
+            if not group or not version:
                 return "", dash.no_update, dash.no_update, dash.no_update
             trigger = ctx.triggered_id
             if trigger == "gv-add-tag-btn" and new_tag:
-                self.add_tag(plot_name, date, version, new_tag.strip())
+                self.add_tag(item_id, group, version, new_tag.strip())
             elif isinstance(trigger, dict) and trigger.get("type") == "gv-tag-remove":
                 # Avoid spurious removes when n_clicks=0 (initial render).
                 if not any(remove_clicks):
@@ -1642,11 +1836,11 @@ class Gallery:
                         dash.no_update,
                     )
                 tag_to_remove = trigger["index"]
-                self.remove_tag(plot_name, date, version, tag_to_remove)
+                self.remove_tag(item_id, group, version, tag_to_remove)
             else:
                 return dash.no_update, dash.no_update, dash.no_update, dash.no_update
-            tags = self.list_tags(plot_name, date, version)
-            all_tags = self.all_tags(plot_name, date)
+            tags = self.list_tags(item_id, group, version)
+            all_tags = self.all_tags(item_id, group)
             tag_list = [
                 dbc.Badge(
                     [
@@ -1673,18 +1867,18 @@ class Gallery:
             Output("gv-version", "options"),
             Output("gv-version", "value"),
             Input("gv-tag-filter", "value"),
-            State("gv-date", "value"),
+            State("gv-group", "value"),
             State("gv-plot-select", "data"),
             State("gv-version", "value"),
             prevent_initial_call=True,
         )
-        def filter_versions_by_tag(selected_tag, date, plot_name, current_version):
-            if not date:
+        def filter_versions_by_tag(selected_tag, group, item_id, current_version):
+            if not group:
                 return [], None
-            backend = self._get_backend(plot_name)
-            all_versions = backend.list_versions(date)
+            backend = self._get_backend(item_id)
+            all_versions = backend.list_versions(group)
             if selected_tag:
-                filtered = backend.versions_with_tag(date, selected_tag)
+                filtered = backend.versions_with_tag(group, selected_tag)
                 versions = [v for v in all_versions if v in filtered]
             else:
                 versions = all_versions
@@ -1732,8 +1926,8 @@ class Gallery:
             Output("gv-console", "children", allow_duplicate=True),
             Output("gv-output-panel", "children", allow_duplicate=True),
             Output("gv-gallery-items", "data", allow_duplicate=True),
-            Output("gv-date", "options", allow_duplicate=True),
-            Output("gv-date", "value", allow_duplicate=True),
+            Output("gv-group", "options", allow_duplicate=True),
+            Output("gv-group", "value", allow_duplicate=True),
             Output("gv-version", "options", allow_duplicate=True),
             Output("gv-version", "value", allow_duplicate=True),
             Output("gv-editor-script", "value", allow_duplicate=True),
@@ -1742,7 +1936,7 @@ class Gallery:
             State("gv-editor-script", "value"),
             State({"type": "gv-param", "name": dash.ALL}, "value"),
             State("gv-plot-select", "data"),
-            State("gv-date", "value"),
+            State("gv-group", "value"),
             State("gv-save-author", "value"),
             State("gv-save-description", "value"),
             prevent_initial_call=True,
@@ -1751,8 +1945,8 @@ class Gallery:
             n_clicks,
             script_code,
             param_values,
-            plot_name,
-            selected_date,
+            item_id,
+            selected_group,
             author,
             change_note,
         ):
@@ -1763,14 +1957,14 @@ class Gallery:
                     *(dash.no_update,) * 7,
                 )
 
-            from datetime import date as _date
+            import datetime as _dt
 
-            save_date = selected_date or _date.today().strftime("%Y%m%d")
+            save_group = selected_group or _dt.date.today().strftime("%Y%m%d")
             sections = self.apply_params_to_script(script_code, param_values)
 
             new_version = self.save_script(
-                plot_name,
-                save_date,
+                item_id,
+                save_group,
                 sections,
                 author=author,
                 change_note=change_note,
@@ -1778,22 +1972,22 @@ class Gallery:
 
             console = (
                 f"Saved v{new_version}\n"
-                f"  scripts/script_{save_date}_v{new_version}.py\n"
-                f"  plots/plot_{save_date}_v{new_version}.png"
+                f"  scripts/script_{save_group}_v{new_version}.py\n"
+                f"  plots/plot_{save_group}_v{new_version}.png"
             )
-            dates = self.list_dates(plot_name)
-            date_opts = [{"label": d, "value": d} for d in dates]
-            versions = self.list_versions(plot_name, save_date)
+            groups = self.list_groups(item_id)
+            group_opts = [{"label": d, "value": d} for d in groups]
+            versions = self.list_versions(item_id, save_group)
             ver_opts = [{"label": f"v{v}", "value": v} for v in versions]
-            plot_bytes = self.load_artifact(plot_name, save_date, str(new_version))
+            plot_bytes = self.load_artifact(item_id, save_group, str(new_version))
             updated_script = sections.to_text()
 
             return (
                 console,
                 _plot_img(plot_bytes),
                 self.plot_names,
-                date_opts,
-                save_date,
+                group_opts,
+                save_group,
                 ver_opts,
                 new_version,
                 updated_script,
@@ -1841,15 +2035,15 @@ class Gallery:
         @app.callback(
             Output("gv-version-diff", "children"),
             Input("gv-version", "value"),
-            State("gv-date", "value"),
+            State("gv-group", "value"),
             State("gv-plot-select", "data"),
         )
-        def show_version_diff(version, date, plot_name):
-            if not date or not version:
+        def show_version_diff(version, group, item_id):
+            if not group or not version:
                 return ""
-            text, color = self.version_diff_label(plot_name, date, version)
-            note = self.change_note(plot_name, date, version)
-            author = self.author(plot_name, date, version)
+            text, color = self.version_diff_label(item_id, group, version)
+            note = self.change_note(item_id, group, version)
+            author = self.author(item_id, group, version)
             children = [html.Div(text, style={"color": color})]
             # Author line — small, dim, italic. Skip if absent.
             if author:
@@ -1882,42 +2076,42 @@ class Gallery:
 
         # -- Feature 3: New Date button (detect uncharted data) --
         @app.callback(
-            Output("gv-date", "options", allow_duplicate=True),
-            Output("gv-date", "value", allow_duplicate=True),
+            Output("gv-group", "options", allow_duplicate=True),
+            Output("gv-group", "value", allow_duplicate=True),
             Output("gv-version", "options", allow_duplicate=True),
             Output("gv-version", "value", allow_duplicate=True),
             Output("gv-editor-script", "value", allow_duplicate=True),
             Output("gv-param-fields", "children", allow_duplicate=True),
             Output("gv-console", "children", allow_duplicate=True),
             Output("gv-clean-script-store", "data", allow_duplicate=True),
-            Input("gv-new-date-btn", "n_clicks"),
+            Input("gv-new-group-btn", "n_clicks"),
             State("gv-plot-select", "data"),
             prevent_initial_call=True,
         )
-        def new_date_from_data(n_clicks, plot_name):
-            if not plot_name:
+        def new_group_from_data(n_clicks, item_id):
+            if not item_id:
                 return (*(dash.no_update,) * 8,)
-            uncharted = self.list_uncharted_dates(plot_name)
+            uncharted = self.list_uncharted_groups(item_id)
             if not uncharted:
                 return (
                     *(dash.no_update,) * 6,
                     f"No new {self.group_label.lower()}s found without scripts.",
                     dash.no_update,
                 )
-            new_date = uncharted[0]
-            template = self.template_for_date(plot_name, new_date)
+            new_group = uncharted[0]
+            template = self.template_for_group(item_id, new_group)
             script_text = template.to_text()
             param_fields = _build_param_fields(template.configurator)
-            dates = sorted(set(self.list_dates(plot_name) + [new_date]), reverse=True)
-            date_opts = [{"label": d, "value": d} for d in dates]
+            groups = sorted(set(self.list_groups(item_id) + [new_group]), reverse=True)
+            group_opts = [{"label": d, "value": d} for d in groups]
             return (
-                date_opts,
-                new_date,
+                group_opts,
+                new_group,
                 [{"label": "v1 (new)", "value": "1"}],
                 "1",
                 script_text,
                 param_fields,
-                f"New {self.group_label.lower()} {new_date} — edit and Save Version to create v1.",
+                f"New {self.group_label.lower()} {new_group} — edit and Save Version to create v1.",
                 script_text,
             )
 
@@ -1925,7 +2119,7 @@ class Gallery:
         # (The clean-script-store is also updated in save_version above)
 
         # -- Feature 5: Confirm before navigating with unsaved changes --
-        # We intercept nav_click and date/version changes via a clientside check.
+        # We intercept nav_click and group/version changes via a clientside check.
         # For simplicity, we use a Store-based approach: compare editor vs clean store.
 
         # -- Feature 8: Export standalone script --
@@ -1934,27 +2128,27 @@ class Gallery:
             Input("gv-export-script-btn", "n_clicks"),
             State("gv-editor-script", "value"),
             State({"type": "gv-param", "name": dash.ALL}, "value"),
-            State("gv-date", "value"),
+            State("gv-group", "value"),
             State("gv-version", "value"),
             State("gv-plot-select", "data"),
             prevent_initial_call=True,
         )
         def export_standalone(
-            n_clicks, script_code, param_values, date, version, plot_name
+            n_clicks, script_code, param_values, group, version, item_id
         ):
             if not script_code:
                 return dash.no_update
             sections = ScriptSections.from_text(script_code)
-            # Build inject vars: params + date/version/paths
+            # Build inject vars: params + group/version/paths
             inject = _param_values_to_inject(sections.configurator, param_values) or {}
-            inject["date"] = date or "unknown"
+            inject["group"] = group or "unknown"
             inject["version"] = int(version) if version else 0
             inject.update(
-                self.export_inject_vars(plot_name, date or "unknown", version or "0")
+                self.export_inject_vars(item_id, group or "unknown", version or "0")
             )
             standalone = sections.to_full(inject_vars=inject)
             filename = (
-                f"script_{date}_v{version}.py" if date and version else "script.py"
+                f"script_{group}_v{version}.py" if group and version else "script.py"
             )
             return dcc.send_string(standalone, filename)
 

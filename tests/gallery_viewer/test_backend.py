@@ -296,7 +296,7 @@ class TestScriptSectionsInjectVars:
 class TestStorageBackendBase:
     def test_defaults_return_empty(self):
         b = StorageBackend()
-        assert b.list_dates() == []
+        assert b.list_groups() == []
         assert b.list_versions("x") == []
         assert b.load_data("x") is None
         assert b.load_artifact("x", "1") is None
@@ -314,16 +314,16 @@ class TestStorageBackendBase:
 class TestFileSystemBackend:
     def test_list_dates(self, tmp_gallery):
         b = FileSystemBackend(tmp_gallery)
-        dates = b.list_dates()
-        assert dates == ["20240601", "20240101"]
+        groups = b.list_groups()
+        assert groups == ["20240601", "20240101"]
 
     def test_list_dates_includes_script_only_dates(self, tmp_gallery):
         """Dates with scripts but no data files should appear."""
         script = ScriptSections(code="print('hello')")
         (tmp_gallery / "scripts" / "script_20241225_v1.py").write_text(script.to_text())
         b = FileSystemBackend(tmp_gallery)
-        dates = b.list_dates()
-        assert "20241225" in dates
+        groups = b.list_groups()
+        assert "20241225" in groups
 
     def test_list_versions(self, tmp_gallery):
         b = FileSystemBackend(tmp_gallery)
@@ -376,25 +376,25 @@ class TestFileSystemBackend:
                 "fig, ax = plt.subplots()\nax.plot([1,2,3])"
             ),
         )
-        save_date = "20240101"
-        v = b.save_version(save_date, sections)
+        save_group = "20240101"
+        v = b.save_version(save_group, sections)
         assert v == "3"  # v1 and v2 already exist for 20240101
         # saved script file exists
-        path = tmp_gallery / "scripts" / f"script_{save_date}_v3.py"
+        path = tmp_gallery / "scripts" / f"script_{save_group}_v3.py"
         assert path.exists()
-        # saved script is clean (no patched date/version lines)
+        # saved script is clean (no patched group/version lines)
         script_text = path.read_text()
-        assert script_text.count("date =") == 0  # no injected date
+        assert script_text.count("group =") == 0  # no injected group
         assert script_text.count("version =") == 0  # no injected version
         # saved plot file exists
-        plot_path = tmp_gallery / "plots" / f"plot_{save_date}_v3.png"
+        plot_path = tmp_gallery / "plots" / f"plot_{save_group}_v3.png"
         assert plot_path.exists()
         # save again → v4
-        v2 = b.save_version(save_date, sections)
+        v2 = b.save_version(save_group, sections)
         assert v2 == "4"
 
     def test_save_version_uses_provided_date(self, tmp_gallery):
-        """Save should use the date passed in, not today's date."""
+        """Save should use the group passed in, not today's group."""
         b = FileSystemBackend(tmp_gallery)
         sections = ScriptSections(
             code=(
@@ -408,7 +408,7 @@ class TestFileSystemBackend:
         assert (tmp_gallery / "scripts" / "script_20991231_v1.py").exists()
 
     def test_custom_starter_template(self, tmp_gallery):
-        def my_template(date, base_dir):
+        def my_template(group, base_dir):
             return ScriptSections(
                 configurator="custom_var: str = 'x'", code="print('custom')"
             )
@@ -506,31 +506,31 @@ class TestFileSystemBackend:
         assert len(run_preview_calls) == 0
 
     def test_template_for_date_uses_latest_version(self, tmp_gallery):
-        """template_for_date picks the latest version of the most recent date."""
+        """template_for_group picks the latest version of the most recent group."""
         b = FileSystemBackend(tmp_gallery)
-        # Fixture has 20240601/v1 and 20240101/v1,v2 — newest date is 20240601
-        template = b.template_for_date("20250101")
-        # Should be based on 20240601/v1 (newest date)
+        # Fixture has 20240601/v1 and 20240101/v1,v2 — newest group is 20240601
+        template = b.template_for_group("20250101")
+        # Should be based on 20240601/v1 (newest group)
         assert isinstance(template, ScriptSections)
 
     def test_template_for_date_replaces_date_string(self, tmp_gallery):
-        """template_for_date substitutes the old date literal with the new one."""
+        """template_for_group substitutes the old group literal with the new one."""
         b = FileSystemBackend(tmp_gallery)
-        # Write a script whose code contains the source date as a string literal
+        # Write a script whose code contains the source group as a string literal
         script = ScriptSections(
             configurator='title: str = "chart"',
-            code='date = "20240601"\nprint(date)',
+            code='group = "20240601"\nprint(group)',
         )
         (tmp_gallery / "scripts" / "script_20240601_v2.py").write_text(script.to_text())
 
-        template = b.template_for_date("20250601")
+        template = b.template_for_group("20250601")
         assert '"20250601"' in template.code
         assert '"20240601"' not in template.code
 
     def test_template_for_date_no_prior_versions(self, tmp_path):
-        """template_for_date falls back to starter_template when no dates exist."""
+        """template_for_group falls back to starter_template when no groups exist."""
         b = FileSystemBackend(tmp_path)
-        template = b.template_for_date("20250101")
+        template = b.template_for_group("20250101")
         assert "matplotlib" in template.code
 
 
@@ -546,25 +546,25 @@ class TestFileSystemBackend:
 
 class TestFileSystemBackendEdge:
     def test_list_dates_empty_dir(self, tmp_path):
-        """list_dates on a fresh directory returns []."""
+        """list_groups on a fresh directory returns []."""
         b = FileSystemBackend(tmp_path)
-        assert b.list_dates() == []
+        assert b.list_groups() == []
 
     def test_list_versions_missing_date_returns_default(self, tmp_path):
-        """list_versions for a date with no scripts returns ['1'] as the default start."""
+        """list_versions for a group with no scripts returns ['1'] as the default start."""
         b = FileSystemBackend(tmp_path)
         assert b.list_versions("99991231") == ["1"]
 
     def test_list_uncharted_dates_no_data(self, tmp_path):
-        """list_uncharted_dates with no data files returns []."""
+        """list_uncharted_groups with no data files returns []."""
         b = FileSystemBackend(tmp_path)
-        assert b.list_uncharted_dates() == []
+        assert b.list_uncharted_groups() == []
 
     def test_list_uncharted_dates_all_charted(self, tmp_gallery):
-        """list_uncharted_dates returns [] when every data date has a script."""
+        """list_uncharted_groups returns [] when every data group has a script."""
         b = FileSystemBackend(tmp_gallery)
         # fixture has data for 20240101 and 20240601, scripts for both
-        uncharted = b.list_uncharted_dates()
+        uncharted = b.list_uncharted_groups()
         assert "20240101" not in uncharted
         assert "20240601" not in uncharted
 
@@ -592,7 +592,7 @@ class TestExportInjectVars:
         assert result["BASE_DIR"] == str(tmp_path)
 
     def test_filesystem_backend_returns_output_path(self, tmp_path):
-        """FileSystemBackend OUTPUT_PATH encodes date and version."""
+        """FileSystemBackend OUTPUT_PATH encodes group and version."""
         b = FileSystemBackend(tmp_path)
         result = b.export_inject_vars("20240101", "3")
         assert "plot_20240101_v3.png" in result["OUTPUT_PATH"]
@@ -616,10 +616,10 @@ class TestExportInjectVars:
 class TestSubclassing:
     def test_override_single_method(self, tmp_gallery):
         class MyBackend(FileSystemBackend):
-            def list_dates(self):
+            def list_groups(self):
                 return ["custom_date"]
 
         b = MyBackend(tmp_gallery)
-        assert b.list_dates() == ["custom_date"]
+        assert b.list_groups() == ["custom_date"]
         # other methods still work
         assert b.load_data("20240101") is not None

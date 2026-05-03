@@ -36,7 +36,7 @@ def _seed_gallery(
     n_versions: int = 1,
     configurator: str = 'title: str = "Demo"\nshow: bool = True',
 ) -> Path:
-    """Minimal gallery dir at *root* with one date and N saved versions."""
+    """Minimal gallery dir at *root* with one group and N saved versions."""
     d = root / "g"
     (d / "data").mkdir(parents=True)
     (d / "plots").mkdir()

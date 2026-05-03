@@ -381,7 +381,7 @@ class TestNewDate:
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
         layout_str = str(g.app.layout)
-        assert "gv-new-date-btn" in layout_str
+        assert "gv-new-group-btn" in layout_str
 
     def test_find_uncharted_dates(self, tmp_path):
         (tmp_path / "data").mkdir()
@@ -396,22 +396,22 @@ class TestNewDate:
         (tmp_path / "scripts" / "script_20240101_v1.py").write_text(script.to_text())
 
         backend = FileSystemBackend(tmp_path)
-        assert backend.list_uncharted_dates() == ["20240601"]
+        assert backend.list_uncharted_groups() == ["20240601"]
 
     def test_find_uncharted_dates_all_charted(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
-        assert backend.list_uncharted_dates() == []
+        assert backend.list_uncharted_groups() == []
 
     def test_template_from_latest(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
-        template = backend.template_for_date("20240601")
+        template = backend.template_for_group("20240601")
         assert "20240601" in template.code or template.configurator != ""
 
     def test_template_from_latest_fallback(self, tmp_path):
         (tmp_path / "data").mkdir()
         (tmp_path / "scripts").mkdir()
         backend = FileSystemBackend(tmp_path)
-        template = backend.template_for_date("20240101")
+        template = backend.template_for_group("20240101")
         assert "plt" in template.code
 
 
@@ -534,11 +534,11 @@ class TestAuthorMetadata:
 class TestGalleryFacade:
     def test_list_dates(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
-        assert g.list_dates() == ["20240101"]
+        assert g.list_groups() == ["20240101"]
 
     def test_list_dates_by_plot_name(self, tmp_gallery):
         g = Gallery(backends={"main": FileSystemBackend(tmp_gallery)})
-        assert g.list_dates("main") == ["20240101"]
+        assert g.list_groups("main") == ["20240101"]
 
     def test_list_versions(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
@@ -565,14 +565,14 @@ class TestGalleryFacade:
 
     def test_template_for_date(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
-        template = g.template_for_date(None, "20250101")
+        template = g.template_for_group(None, "20250101")
         assert isinstance(template, ScriptSections)
         assert template.code != ""
 
     def test_list_uncharted_dates_empty(self, tmp_gallery):
-        # All data dates have scripts in tmp_gallery
+        # All data groups have scripts in tmp_gallery
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
-        uncharted = g.list_uncharted_dates()
+        uncharted = g.list_uncharted_groups()
         assert isinstance(uncharted, list)
 
     def test_list_uncharted_dates_with_new_data(self, tmp_gallery):
@@ -582,7 +582,7 @@ class TestGalleryFacade:
         df = pd.DataFrame({"x": [1], "y": [2]})
         df.to_csv(tmp_gallery / "data" / "data_20251231.csv", index=False)
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
-        assert "20251231" in g.list_uncharted_dates()
+        assert "20251231" in g.list_uncharted_groups()
 
     def test_version_diff_v1_returns_empty(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
@@ -655,21 +655,21 @@ def _make_gallery_dir(root, name, *, dates_versions=None):
     (d / "data").mkdir()
     (d / "plots").mkdir()
     (d / "scripts").mkdir()
-    for date, n_versions in dates_versions.items():
+    for group, n_versions in dates_versions.items():
         pd.DataFrame({"x": [1], "y": [2]}).to_csv(
-            d / "data" / f"data_{date}.csv", index=False
+            d / "data" / f"data_{group}.csv", index=False
         )
         for v in range(1, n_versions + 1):
             sections = ScriptSections(
                 configurator=f'name: str = "{name}"\nversion: int = {v}',
                 code=f"print({name!r}, {v})",
             )
-            (d / "scripts" / f"script_{date}_v{v}.py").write_text(sections.to_text())
+            (d / "scripts" / f"script_{group}_v{v}.py").write_text(sections.to_text())
     return d
 
 
 class TestGalleryFacadeRouting:
-    """Verify Gallery facade methods route to the correct backend by plot_name."""
+    """Verify Gallery facade methods route to the correct backend by item_id."""
 
     def test_export_inject_vars_routes_per_plot(self, tmp_path):
         """export_inject_vars returns paths from the matching backend, not the first one."""
@@ -688,7 +688,7 @@ class TestGalleryFacadeRouting:
         assert alpha_vars["BASE_DIR"] != beta_vars["BASE_DIR"]
 
     def test_export_inject_vars_unknown_plot_falls_back(self, tmp_path):
-        """Unknown plot_name falls back to the first backend (matches _get_backend)."""
+        """Unknown item_id falls back to the first backend (matches _get_backend)."""
         dir_alpha = _make_gallery_dir(tmp_path, "alpha")
         dir_beta = _make_gallery_dir(tmp_path, "beta")
         g = Gallery(
@@ -779,7 +779,7 @@ class TestHeadlessAPI:
 class TestHeadlessWorkflow:
     """Walk through a full user session without instantiating the Dash app.
 
-    Tells the story: open gallery → list dates → load script → edit and re-run
+    Tells the story: open gallery → list groups → load script → edit and re-run
     → save new version → diff against predecessor → export standalone.
     """
 
@@ -788,9 +788,9 @@ class TestHeadlessWorkflow:
 
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
 
-        # 1. User opens gallery — dates and versions are visible.
-        dates = g.list_dates(None)
-        assert dates == ["20240101"]
+        # 1. User opens gallery — groups and versions are visible.
+        groups = g.list_groups(None)
+        assert groups == ["20240101"]
         versions = g.list_versions(None, "20240101")
         assert versions == ["1"]
 
@@ -1350,13 +1350,13 @@ class TestParseUrlState:
         g = Gallery(
             backend=FileSystemBackend(d),
             item_url_key="plot",
-            group_url_key="date",
+            group_url_key="group",
         )
-        state = g.parse_url_state("?plot=main&date=20240101&version=1")
+        state = g.parse_url_state("?plot=main&group=20240101&version=1")
         assert state["item"] == "main"
         assert state["group"] == "20240101"
         # Keys returned use internal axis names regardless of URL key choice
-        assert "plot" not in state and "date" not in state
+        assert "plot" not in state and "group" not in state
 
 
 # ---------------------------------------------------------------------------
@@ -1464,15 +1464,15 @@ class TestErrorPaths:
         assert result.success is False
 
     def test_load_script_missing_date_falls_back_to_template(self, tmp_gallery):
-        """Loading a date that doesn't exist returns a starter template, not a crash."""
+        """Loading a group that doesn't exist returns a starter template, not a crash."""
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
         sections = g.load_script(None, "21000101", "1")
-        # FileSystemBackend returns a starter template for missing dates
+        # FileSystemBackend returns a starter template for missing groups
         assert sections is not None
         assert sections.code  # non-empty starter
 
     def test_load_data_missing_date_returns_none(self, tmp_gallery):
-        """Loading data for an unknown date returns None, no exception."""
+        """Loading data for an unknown group returns None, no exception."""
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
         result = g.load_data(None, "21000101")
         assert result is None
@@ -1505,12 +1505,12 @@ class TestErrorPaths:
         """A gallery with no backends doesn't crash on facade calls — returns []/{}."""
         # _get_backend will raise StopIteration on next() — confirm what happens
         with pytest.raises(StopIteration):
-            empty_gallery.list_dates(None)
+            empty_gallery.list_groups(None)
 
     def test_export_inject_vars_with_missing_plot_falls_back(
         self, multi_backend_gallery
     ):
-        """Unknown plot_name falls back to the first backend (consistent with _get_backend)."""
+        """Unknown item_id falls back to the first backend (consistent with _get_backend)."""
         # 'gamma' doesn't exist; should return alpha's paths (first in dict)
         result = multi_backend_gallery.export_inject_vars("gamma", "20240101", "1")
         assert "BASE_DIR" in result
@@ -1576,10 +1576,10 @@ class TestConfigurationMatrix:
 
     @pytest.mark.parametrize("name,factory", _CONFIGS, ids=[c[0] for c in _CONFIGS])
     def test_list_dates_does_not_crash(self, tmp_path, name, factory):
-        """list_dates() works in every configuration (or empty for default)."""
+        """list_groups() works in every configuration (or empty for default)."""
         g = factory(tmp_path)
-        # default config has no real backend dir, so list_dates may be empty
-        result = g.list_dates(None)
+        # default config has no real backend dir, so list_groups may be empty
+        result = g.list_groups(None)
         assert isinstance(result, list)
 
     @pytest.mark.parametrize(
@@ -1588,11 +1588,11 @@ class TestConfigurationMatrix:
         ids=[c[0] for c in _CONFIGS if c[0] != "default"],
     )
     def test_load_script_with_real_backend(self, tmp_path, name, factory):
-        """Configurations with a real backend can load v1 of the seeded date."""
+        """Configurations with a real backend can load v1 of the seeded group."""
         g = factory(tmp_path)
-        # multi_backend requires explicit plot_name; others fall back
-        plot_name = "alpha" if name == "multi_backend" else None
-        sections = g.load_script(plot_name, "20240101", "1")
+        # multi_backend requires explicit item_id; others fall back
+        item_id = "alpha" if name == "multi_backend" else None
+        sections = g.load_script(item_id, "20240101", "1")
         assert isinstance(sections, ScriptSections)
 
     @pytest.mark.parametrize(
@@ -1603,8 +1603,8 @@ class TestConfigurationMatrix:
     def test_export_inject_vars_with_real_backend(self, tmp_path, name, factory):
         """Every real-backend configuration produces valid inject vars."""
         g = factory(tmp_path)
-        plot_name = "alpha" if name == "multi_backend" else None
-        result = g.export_inject_vars(plot_name, "20240101", "1")
+        item_id = "alpha" if name == "multi_backend" else None
+        result = g.export_inject_vars(item_id, "20240101", "1")
         assert "BASE_DIR" in result
         assert "OUTPUT_PATH" in result
 
@@ -1775,7 +1775,7 @@ class TestVersionSequences:
             assert sections.code  # all seeded with non-empty code
 
     @pytest.mark.parametrize(
-        "dates",
+        "groups",
         [
             {"20240101": 1},
             {"20240101": 1, "20240601": 1},
@@ -1783,12 +1783,12 @@ class TestVersionSequences:
         ],
         ids=["one_date", "two_dates", "three_dates_mixed_versions"],
     )
-    def test_list_dates_across_shapes(self, tmp_path, dates):
-        """list_dates() returns every date in the gallery, regardless of version count."""
-        d = _make_gallery_dir(tmp_path, "main", dates_versions=dates)
+    def test_list_dates_across_shapes(self, tmp_path, groups):
+        """list_groups() returns every group in the gallery, regardless of version count."""
+        d = _make_gallery_dir(tmp_path, "main", dates_versions=groups)
         g = Gallery(backend=FileSystemBackend(d))
-        listed = g.list_dates(None)
-        assert set(listed) == set(dates.keys())
+        listed = g.list_groups(None)
+        assert set(listed) == set(groups.keys())
 
 
 # ---------------------------------------------------------------------------

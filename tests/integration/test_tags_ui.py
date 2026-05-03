@@ -28,7 +28,7 @@ from gallery_viewer.gallery import Gallery
 
 
 def _seed_gallery(root: Path, n_versions: int = 3) -> Path:
-    """Create a minimal gallery directory at *root* with one date and N versions."""
+    """Create a minimal gallery directory at *root* with one group and N versions."""
     d = root / "g"
     (d / "data").mkdir(parents=True)
     (d / "plots").mkdir()
@@ -81,7 +81,7 @@ def test_add_tag_via_modal_updates_main_row_and_filter(dash_duo, tmp_path):
 
     # Wait for initial render — version dropdown populated.
     dash_duo.wait_for_element("#gv-version", timeout=10)
-    time.sleep(0.5)  # allow date/version stores to propagate
+    time.sleep(0.5)  # allow group/version stores to propagate
 
     # Open Edit Tags modal.
     dash_duo.find_element("#gv-edit-tags-btn").click()

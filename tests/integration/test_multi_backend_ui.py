@@ -9,7 +9,7 @@ Mirrors the facade-level coverage in:
 
 Chunk C (subset):
     C2 — Multi-backend gallery: clicking a sidebar nav item switches the
-         active plot, and dates / script content reflect the chosen backend.
+         active plot, and groups / script content reflect the chosen backend.
     C3 — A Gallery built without an ``export_fn`` does not render the
          per-plot export button (only the standalone-script export remains).
 """
@@ -42,16 +42,16 @@ def _make_gallery_dir(
     (d / "data").mkdir()
     (d / "plots").mkdir()
     (d / "scripts").mkdir()
-    for date, n_versions in dates_versions.items():
+    for group, n_versions in dates_versions.items():
         pd.DataFrame({"x": [1], "y": [2]}).to_csv(
-            d / "data" / f"data_{date}.csv", index=False
+            d / "data" / f"data_{group}.csv", index=False
         )
         for v in range(1, n_versions + 1):
             sections = ScriptSections(
                 configurator=f'name: str = "{name}"\nversion: int = {v}',
                 code=f"print({name!r}, {v})",
             )
-            (d / "scripts" / f"script_{date}_v{v}.py").write_text(sections.to_text())
+            (d / "scripts" / f"script_{group}_v{v}.py").write_text(sections.to_text())
     return d
 
 
@@ -93,7 +93,7 @@ def test_multi_backend_sidebar_click_switches_active_plot(dash_duo, tmp_path):
     # {"type": "gv-nav-item", "index": "beta"} — find via CSS substring.
     beta_nav = dash_duo.find_element('[id*=\'"index":"beta"\']')
     beta_nav.click()
-    time.sleep(1.0)  # nav_click → date opts → version reload → script load
+    time.sleep(1.0)  # nav_click → group opts → version reload → script load
 
     wrapper_html = (
         dash_duo.find_element("#gv-editor-wrapper").get_attribute("innerHTML") or ""

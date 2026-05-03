@@ -79,6 +79,7 @@ Multiple outputs render stacked in the preview panel. A script can produce two c
 - **Author metadata** — optional name saved as comment in the script
 - **New Date button** — detect uncharted data dates, pre-populate from latest version
 - **Multi-plot galleries** — sidebar navigation with search/filter, backed by `gallery.json`
+- **Branch-click gallery view** — clicking a tree group shows a card grid of its contents (direct items + drillable subfolders); clicking a leaf opens the script detail view as before
 - **Pluggable backends** — `FileSystemBackend` or subclass `StorageBackend` for custom storage
 
 ## File structure

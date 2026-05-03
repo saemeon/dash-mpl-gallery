@@ -16,7 +16,7 @@ Chunk B — guardrails and per-user context:
     B3 — Script with a runtime error surfaces the error in the console panel
 
 Chunk C (subset):
-    C1 — "New date" button creates a fresh entry from the latest template
+    C1 — "New group" button creates a fresh entry from the latest template
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def _seed_gallery(
     configurator: str = 'title: str = "Demo"\nshow: bool = True',
     code: str = "print('hi')",
 ) -> Path:
-    """Minimal gallery dir at *root* with one date and N saved versions."""
+    """Minimal gallery dir at *root* with one group and N saved versions."""
     d = root / "g"
     (d / "data").mkdir(parents=True)
     (d / "plots").mkdir()
@@ -273,19 +273,19 @@ def test_run_script_with_runtime_error_surfaces_in_console(dash_duo, tmp_path):
     )
 
 
-# ── C1: "New date" button creates an entry from the latest template ───────
+# ── C1: "New group" button creates an entry from the latest template ───────
 
 
 def test_new_date_button_creates_entry_from_uncharted_data(dash_duo, tmp_path):
     """Story: a fresh CSV (``data_20240202.csv``) lands in the data folder
-    overnight. The user clicks "New date" and a v1-from-template entry for
-    that date is added to the dropdown — no manual file shuffling needed.
+    overnight. The user clicks "New group" and a v1-from-template entry for
+    that group is added to the dropdown — no manual file shuffling needed.
 
     Mirrors facade test `TestNewDate.test_find_uncharted_dates` and
-    `Gallery.template_for_date` end-to-end through the UI.
+    `Gallery.template_for_group` end-to-end through the UI.
     """
     base = _seed_gallery(tmp_path, n_versions=1)
-    # Add an uncharted data file — date present in /data but absent in /scripts.
+    # Add an uncharted data file — group present in /data but absent in /scripts.
     pd.DataFrame({"x": [9, 10], "y": [11, 12]}).to_csv(
         base / "data" / "data_20240202.csv", index=False
     )
@@ -293,25 +293,25 @@ def test_new_date_button_creates_entry_from_uncharted_data(dash_duo, tmp_path):
     gallery = Gallery(backend=FileSystemBackend(base))
     dash_duo.start_server(gallery.app)
 
-    dash_duo.wait_for_element("#gv-new-date-btn", timeout=10)
+    dash_duo.wait_for_element("#gv-new-group-btn", timeout=10)
     time.sleep(0.7)
 
-    dash_duo.find_element("#gv-new-date-btn").click()
-    time.sleep(1.2)  # callback chain: new_date → date.value → version reload
+    dash_duo.find_element("#gv-new-group-btn").click()
+    time.sleep(1.2)  # callback chain: new_group → group.value → version reload
 
-    # Contract: console announces the new date, the date selector moves to
+    # Contract: console announces the new group, the group selector moves to
     # it, and the editor is populated with a fresh template that references
-    # the new date. (The "(new)" version label is a UX hint that gets
-    # overwritten by the date-change cascade — relying on it would make the
+    # the new group. (The "(new)" version label is a UX hint that gets
+    # overwritten by the group-change cascade — relying on it would make the
     # test brittle to harmless callback reordering.)
     console_text = dash_duo.find_element("#gv-console").text
     assert "20240202" in console_text, (
-        f"console should announce new date. text={console_text!r}"
+        f"console should announce new group. text={console_text!r}"
     )
 
-    date_text = dash_duo.find_element("#gv-date").text
+    date_text = dash_duo.find_element("#gv-group").text
     assert "20240202" in date_text, (
-        f"date selector should show the new date. text={date_text!r}"
+        f"group selector should show the new group. text={date_text!r}"
     )
 
     # Reveal the editor to verify the template was loaded.
@@ -320,6 +320,6 @@ def test_new_date_button_creates_entry_from_uncharted_data(dash_duo, tmp_path):
     wrapper = dash_duo.find_element("#gv-editor-wrapper")
     editor_text = wrapper.text or wrapper.get_attribute("innerHTML") or ""
     assert "20240202" in editor_text, (
-        "editor should contain a template referencing the new date. "
+        "editor should contain a template referencing the new group. "
         f"snippet={editor_text[:200]!r}"
     )
