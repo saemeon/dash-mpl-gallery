@@ -13,9 +13,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 BASE_DIR = Path(__file__).parent.parent
-date = "20260101"
+group = "20260101"
 
-df = pd.read_csv(BASE_DIR / "data" / f"data_{date}.csv")
+df = pd.read_csv(BASE_DIR / "data" / f"data_{group}.csv")
 quarters = ["q1", "q2", "q3", "q4"]
 
 # Output 1: bar chart by region
@@ -52,7 +52,7 @@ if show_total:
     plt.tight_layout()
 
 # === SAVE ===
-# The gallery injects: date, version, BASE_DIR, OUTPUT_PATH
+# The gallery injects: group, version, BASE_DIR, OUTPUT_PATH
 from pathlib import Path
 Path(OUTPUT_PATH).parent.mkdir(parents=True, exist_ok=True)
 plt.figure(fig.number)

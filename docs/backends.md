@@ -6,16 +6,19 @@ The `StorageBackend` base class defines the interface for all storage operations
 
 ```python
 class StorageBackend:
-    def list_dates(self) -> list[str]: ...
-    def list_versions(self, date: str) -> list[str]: ...
-    def load_script(self, date: str, version: str) -> ScriptSections: ...
-    def load_data(self, date: str) -> pd.DataFrame | None: ...
-    def load_artifact(self, date: str, version: str) -> bytes | None: ...
-    def save_version(self, date: str, sections: ScriptSections) -> str: ...
+    def list_groups(self) -> list[str]: ...
+    def list_versions(self, group: str) -> list[str]: ...
+    def load_script(self, group: str, version: str) -> ScriptSections: ...
+    def load_data(self, group: str) -> pd.DataFrame | None: ...
+    def load_artifact(self, group: str, version: str) -> bytes | None: ...
+    def save_version(self, group: str, sections: ScriptSections) -> str: ...
     def run_preview(self, sections, inject_vars=None) -> RunResult: ...
     def run_full(self, sections, inject_vars=None) -> RunResult: ...
-    def starter_template(self, date: str) -> ScriptSections: ...
+    def starter_template(self, group: str) -> ScriptSections: ...
 ```
+
+A *group* is a string label for one cohort of versions (typically a date like
+`20240101`, but any string works — project codes, branch names, etc.).
 
 You only need to override the methods you want to customize. The base class provides sensible defaults (empty lists, None, NotImplementedError for save).
 
@@ -25,19 +28,20 @@ The default backend. Expects this directory layout:
 
 ```text
 base_dir/
-  data/     data_{YYYYMMDD}.csv|parquet
-  scripts/  script_{YYYYMMDD}_v{N}.py
-  plots/    plot_{YYYYMMDD}_v{N}.png
+  data/     data_{group}.csv|parquet
+  scripts/  script_{group}_v{N}.py
+  plots/    plot_{group}_v{N}.png
 ```
 
-Customizable via regex patterns:
+Customizable via regex patterns (defaults below — `.+?` accepts any group
+string, including dates, project codes, etc.):
 
 ```python
 backend = FileSystemBackend(
     base_dir="./my_project",
-    data_pattern=r"data_(?P<date>\d{8})\.(csv|parquet)$",
-    script_pattern=r"script_(?P<date>\d{8})_v(?P<version>\d+)\.py$",
-    plot_pattern=r"plot_(?P<date>\d{8})_v(?P<version>\d+)\.png$",
+    data_pattern=r"data_(?P<group>[^.]+?)\.(csv|parquet)$",
+    script_pattern=r"script_(?P<group>.+?)_v(?P<version>\d+)\.py$",
+    plot_pattern=r"plot_(?P<group>.+?)_v(?P<version>\d+)\.png$",
 )
 ```
 
@@ -59,9 +63,9 @@ Any subdirectory containing `data/` or `scripts/` is treated as a plot.
 Override what new scripts look like:
 
 ```python
-def my_template(date, base_dir):
+def my_template(group, base_dir):
     return ScriptSections(
-        configurator=f'title: str = "{date}"',
+        configurator=f'title: str = "{group}"',
         code="import matplotlib.pyplot as plt\nfig, ax = plt.subplots()\n# your code here",
     )
 
@@ -76,16 +80,16 @@ class S3Backend(StorageBackend):
         self.bucket = bucket
         self.prefix = prefix
 
-    def list_dates(self):
+    def list_groups(self):
         # List S3 prefixes under self.prefix/data/
         ...
 
-    def load_script(self, date, version):
-        key = f"{self.prefix}/scripts/script_{date}_v{version}.py"
+    def load_script(self, group, version):
+        key = f"{self.prefix}/scripts/script_{group}_v{version}.py"
         text = s3_client.get_object(Bucket=self.bucket, Key=key)["Body"].read().decode()
         return ScriptSections.from_text(text)
 
-    def save_version(self, date, sections):
+    def save_version(self, group, sections):
         # Upload to S3
         ...
 ```

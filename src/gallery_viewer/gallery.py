@@ -509,7 +509,7 @@ class Gallery:
     # -- Pure views of in-memory state --------------------------------------
 
     @property
-    def plot_names(self) -> list[str]:
+    def item_ids(self) -> list[str]:
         """Names of all configured plots (backend keys), in insertion order."""
         return list(self.backends.keys())
 
@@ -574,7 +574,19 @@ class Gallery:
             __name__,
             external_stylesheets=[self.theme],
             title=self.title,
+            use_pages=True,
+            pages_folder="",
+            suppress_callback_exceptions=True,
         )
+        # Import + bind page modules. Importing triggers register_page().
+        # bind() attaches the Gallery instance for callbacks to close over
+        # (see PAGES_MIGRATION.md §1a).
+        from gallery_viewer.pages import detail as _detail_page
+        from gallery_viewer.pages import gallery as _gallery_page
+
+        _detail_page.bind(self)
+        _gallery_page.bind(self)
+
         app.layout = self._layout()
         self._register_callbacks(app)
         self._register_render_route(app)
@@ -610,7 +622,7 @@ class Gallery:
 
     def _layout(self) -> dbc.Container:
         extra = self.extra_controls or html.Div()
-        plot_names = list(self.backends.keys())
+        item_ids = list(self.backends.keys())
 
         export_btn = []
         if self.export_fn is not None:
@@ -739,7 +751,7 @@ class Gallery:
                                 # Hidden store for selected plot name
                                 dcc.Store(
                                     id="gv-plot-select",
-                                    data=plot_names[0] if plot_names else None,
+                                    data=item_ids[0] if item_ids else None,
                                 ),
                                 dcc.Store(id="gv-gallery-items"),
                                 dcc.Store(id="gv-sidebar-collapsed", data=[]),
@@ -1221,6 +1233,12 @@ class Gallery:
                 ),
                 # Export standalone script
                 dcc.Download(id="gv-export-script-download"),
+                # Migration scaffold: page_container is mounted but inert
+                # until Steps 3/4 move the existing layout into pages.
+                # Today the existing static layout above is what the user
+                # sees; placeholders only appear when they navigate to
+                # /branch/<x>.
+                html.Div(dash.page_container, style={"display": "none"}),
             ],
         )
 
@@ -1555,7 +1573,7 @@ class Gallery:
             Input("gv-sidebar-collapsed", "data"),
         )
         def render_sidebar(_, search, active_plot, collapsed):
-            names = self.plot_names
+            names = self.item_ids
             if search and search.strip():
                 q = search.lower()
                 names = [n for n in names if q in n.lower()]
@@ -1635,7 +1653,7 @@ class Gallery:
                     desc = cfg.get("description", "")
                     if desc:
                         descriptions[name] = desc
-            tree = _build_sidebar_tree(self.plot_names)
+            tree = _build_sidebar_tree(self.item_ids)
             return _render_gallery_view(tree, active_group, descriptions)
 
         # -- Click nav item → select plot, load its groups, exit gallery --
@@ -2027,7 +2045,7 @@ class Gallery:
             return (
                 console,
                 _plot_img(plot_bytes),
-                self.plot_names,
+                self.item_ids,
                 group_opts,
                 save_group,
                 ver_opts,
@@ -2262,7 +2280,7 @@ class Gallery:
                 # is_multi is now a @property — re-derives automatically
 
                 # Trigger sidebar rebuild by updating gallery-items
-                return f"Created '{name}'", name, self.plot_names
+                return f"Created '{name}'", name, self.item_ids
 
 
 # ---------------------------------------------------------------------------

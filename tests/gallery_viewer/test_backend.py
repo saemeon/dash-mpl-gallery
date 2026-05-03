@@ -312,12 +312,12 @@ class TestStorageBackendBase:
 
 
 class TestFileSystemBackend:
-    def test_list_dates(self, tmp_gallery):
+    def test_list_groups(self, tmp_gallery):
         b = FileSystemBackend(tmp_gallery)
         groups = b.list_groups()
         assert groups == ["20240601", "20240101"]
 
-    def test_list_dates_includes_script_only_dates(self, tmp_gallery):
+    def test_list_groups_includes_script_only_dates(self, tmp_gallery):
         """Dates with scripts but no data files should appear."""
         script = ScriptSections(code="print('hello')")
         (tmp_gallery / "scripts" / "script_20241225_v1.py").write_text(script.to_text())
@@ -505,7 +505,7 @@ class TestFileSystemBackend:
         assert len(run_full_calls) == 1
         assert len(run_preview_calls) == 0
 
-    def test_template_for_date_uses_latest_version(self, tmp_gallery):
+    def test_template_for_group_uses_latest_version(self, tmp_gallery):
         """template_for_group picks the latest version of the most recent group."""
         b = FileSystemBackend(tmp_gallery)
         # Fixture has 20240601/v1 and 20240101/v1,v2 — newest group is 20240601
@@ -513,7 +513,7 @@ class TestFileSystemBackend:
         # Should be based on 20240601/v1 (newest group)
         assert isinstance(template, ScriptSections)
 
-    def test_template_for_date_replaces_date_string(self, tmp_gallery):
+    def test_template_for_group_replaces_date_string(self, tmp_gallery):
         """template_for_group substitutes the old group literal with the new one."""
         b = FileSystemBackend(tmp_gallery)
         # Write a script whose code contains the source group as a string literal
@@ -527,7 +527,7 @@ class TestFileSystemBackend:
         assert '"20250601"' in template.code
         assert '"20240601"' not in template.code
 
-    def test_template_for_date_no_prior_versions(self, tmp_path):
+    def test_template_for_group_no_prior_versions(self, tmp_path):
         """template_for_group falls back to starter_template when no groups exist."""
         b = FileSystemBackend(tmp_path)
         template = b.template_for_group("20250101")
@@ -545,7 +545,7 @@ class TestFileSystemBackend:
 
 
 class TestFileSystemBackendEdge:
-    def test_list_dates_empty_dir(self, tmp_path):
+    def test_list_groups_empty_dir(self, tmp_path):
         """list_groups on a fresh directory returns []."""
         b = FileSystemBackend(tmp_path)
         assert b.list_groups() == []
@@ -555,12 +555,12 @@ class TestFileSystemBackendEdge:
         b = FileSystemBackend(tmp_path)
         assert b.list_versions("99991231") == ["1"]
 
-    def test_list_uncharted_dates_no_data(self, tmp_path):
+    def test_list_uncharted_groups_no_data(self, tmp_path):
         """list_uncharted_groups with no data files returns []."""
         b = FileSystemBackend(tmp_path)
         assert b.list_uncharted_groups() == []
 
-    def test_list_uncharted_dates_all_charted(self, tmp_gallery):
+    def test_list_uncharted_groups_all_charted(self, tmp_gallery):
         """list_uncharted_groups returns [] when every data group has a script."""
         b = FileSystemBackend(tmp_gallery)
         # fixture has data for 20240101 and 20240601, scripts for both

@@ -9,9 +9,9 @@ import plotly.graph_objects as go
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent
-date = "20260101"
+group = "20260101"
 
-df = pd.read_csv(BASE_DIR / "data" / f"data_{date}.csv", parse_dates=["month"])
+df = pd.read_csv(BASE_DIR / "data" / f"data_{group}.csv", parse_dates=["month"])
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(
@@ -37,6 +37,6 @@ fig.update_layout(
 )
 
 # === SAVE ===
-# The gallery injects: date, version, BASE_DIR, OUTPUT_PATH
+# The gallery injects: group, version, BASE_DIR, OUTPUT_PATH
 # Plotly can also export static images if kaleido is installed
 print(f"Plotly figure with {len(fig.data)} traces")

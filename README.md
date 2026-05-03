@@ -69,15 +69,17 @@ Multiple outputs render stacked in the preview panel. A script can produce two c
 
 ## Features
 
-- **Date/version tracking** — scripts organized as `script_{date}_v{version}.py`
+- **Group/version tracking** — scripts organized as `script_{group}_v{version}.py`
+  (group is typically a date like `20240101`, but any string works — project
+  codes, branch names, etc.)
 - **Parameter form fields** — CONFIGURATOR section auto-generates UI controls
 - **RUN preview** — execute without saving, form values injected at runtime
-- **Save Version** — creates next version for the selected date, clean script on disk
+- **Save Version** — creates next version for the selected group, clean script on disk
 - **Version diff labels** — one-line summary of what changed from the previous version
 - **Read-only mode** — toggle to hide the code editor (reviewers see only form fields + plot)
 - **Export .py** — download as standalone script with all variables hardcoded
 - **Author metadata** — optional name saved as comment in the script
-- **New Date button** — detect uncharted data dates, pre-populate from latest version
+- **New Group button** — detect uncharted data groups, pre-populate from latest version
 - **Multi-plot galleries** — sidebar navigation with search/filter, backed by `gallery.json`
 - **Branch-click gallery view** — clicking a tree group shows a card grid of its contents (direct items + drillable subfolders); clicking a leaf opens the script detail view as before
 - **Pluggable backends** — `FileSystemBackend` or subclass `StorageBackend` for custom storage

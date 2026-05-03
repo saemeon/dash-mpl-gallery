@@ -147,7 +147,7 @@ class TestBuildApp:
     def test_empty_backends_builds(self):
         """A gallery with no plots (empty dict) should still build."""
         g = Gallery(backends={})
-        # Empty backends → no plot_names → layout still renders
+        # Empty backends → no item_ids → layout still renders
         # (gv-plot-select store.data = None)
         app = g.app
         assert app is not None
@@ -532,11 +532,11 @@ class TestAuthorMetadata:
 
 
 class TestGalleryFacade:
-    def test_list_dates(self, tmp_gallery):
+    def test_list_groups(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
         assert g.list_groups() == ["20240101"]
 
-    def test_list_dates_by_plot_name(self, tmp_gallery):
+    def test_list_groups_by_item_id(self, tmp_gallery):
         g = Gallery(backends={"main": FileSystemBackend(tmp_gallery)})
         assert g.list_groups("main") == ["20240101"]
 
@@ -563,19 +563,19 @@ class TestGalleryFacade:
         result = g.load_artifact(None, "20240101", "1")
         assert result is None or isinstance(result, bytes)
 
-    def test_template_for_date(self, tmp_gallery):
+    def test_template_for_group(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
         template = g.template_for_group(None, "20250101")
         assert isinstance(template, ScriptSections)
         assert template.code != ""
 
-    def test_list_uncharted_dates_empty(self, tmp_gallery):
+    def test_list_uncharted_groups_empty(self, tmp_gallery):
         # All data groups have scripts in tmp_gallery
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
         uncharted = g.list_uncharted_groups()
         assert isinstance(uncharted, list)
 
-    def test_list_uncharted_dates_with_new_data(self, tmp_gallery):
+    def test_list_uncharted_groups_with_new_data(self, tmp_gallery):
         import pandas as pd
 
         # Add a data file with no matching script
@@ -615,11 +615,11 @@ class TestGetBackend:
         assert g._get_backend("nonexistent") is b1
         assert g._get_backend(None) is b1
 
-    def test_plot_names_property(self, tmp_path):
+    def test_item_ids_property(self, tmp_path):
         b1 = FileSystemBackend(tmp_path)
         b2 = FileSystemBackend(tmp_path)
         g = Gallery(backends={"x": b1, "y": b2})
-        assert g.plot_names == ["x", "y"]
+        assert g.item_ids == ["x", "y"]
 
     def test_is_multi_re_derives_after_backend_added(self, tmp_path):
         """is_multi was a frozen attribute; now a property that re-derives."""
@@ -1501,7 +1501,7 @@ class TestErrorPaths:
         diff = g.version_diff(None, "20240101", "2")
         assert isinstance(diff, list)
 
-    def test_empty_backends_list_dates_returns_empty(self, empty_gallery):
+    def test_empty_backends_list_groups_returns_empty(self, empty_gallery):
         """A gallery with no backends doesn't crash on facade calls — returns []/{}."""
         # _get_backend will raise StopIteration on next() — confirm what happens
         with pytest.raises(StopIteration):
@@ -1575,7 +1575,7 @@ class TestConfigurationMatrix:
         assert g.app.layout is not None
 
     @pytest.mark.parametrize("name,factory", _CONFIGS, ids=[c[0] for c in _CONFIGS])
-    def test_list_dates_does_not_crash(self, tmp_path, name, factory):
+    def test_list_groups_does_not_crash(self, tmp_path, name, factory):
         """list_groups() works in every configuration (or empty for default)."""
         g = factory(tmp_path)
         # default config has no real backend dir, so list_groups may be empty
@@ -1783,7 +1783,7 @@ class TestVersionSequences:
         ],
         ids=["one_date", "two_dates", "three_dates_mixed_versions"],
     )
-    def test_list_dates_across_shapes(self, tmp_path, groups):
+    def test_list_groups_across_shapes(self, tmp_path, groups):
         """list_groups() returns every group in the gallery, regardless of version count."""
         d = _make_gallery_dir(tmp_path, "main", groups_versions=groups)
         g = Gallery(backend=FileSystemBackend(d))

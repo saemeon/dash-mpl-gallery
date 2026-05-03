@@ -14,9 +14,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 BASE_DIR = Path(__file__).parent.parent
-date = "20260101"
+group = "20260101"
 
-df = pd.read_csv(BASE_DIR / "data" / f"data_{date}.csv", parse_dates=["month"])
+df = pd.read_csv(BASE_DIR / "data" / f"data_{group}.csv", parse_dates=["month"])
 
 fig, ax = plt.subplots(figsize=(8, 5))
 
@@ -47,7 +47,7 @@ fig.autofmt_xdate()
 plt.tight_layout()
 
 # === SAVE ===
-# The gallery injects: date, version, BASE_DIR, OUTPUT_PATH
+# The gallery injects: group, version, BASE_DIR, OUTPUT_PATH
 from pathlib import Path
 Path(OUTPUT_PATH).parent.mkdir(parents=True, exist_ok=True)
 plt.savefig(OUTPUT_PATH, dpi=150)

@@ -310,28 +310,30 @@ Choices worth revisiting if the URL story expands:
    to update fields *after* initial load (e.g. user changes `?script_dpi=...`
    without reselecting the version).
 
-3. **Internal Dash IDs stay date-flavoured (`gv-date`, `gv-plot-select`).**
-   Renamed labels but not internal component IDs — they're an internal
-   contract, not user-facing. Renaming would mean touching every callback for
-   zero user benefit. Worth it only if the storage backend interface
-   (`list_dates`, `load_artifact`, `_get_backend(plot_name)`) is also
-   renamed in a coordinated refactor.
+3. **Internal Dash IDs are now group-flavoured (`gv-group`, `gv-new-group-btn`).**
+   Renamed in the coordinated refactor that aligned the storage backend, the
+   facade, and the inject-vars contract on `group`/`item_id` vocabulary.
+   `gv-plot-select` is intentionally left alone — "plot" refers to the named
+   plot/item, not the date axis, so the rename never applied there.
 
-4. **Storage backend interface keeps date/version vocabulary.** `list_dates`,
-   `load_script(date, version)`, `plot_{date}_v{N}.png` filenames — all kept
-   for now. A generic backend (`list_groups`, `{group}_v{N}.<ext>` filenames)
-   would let project-flavoured galleries have project-flavoured directories
-   too, but it's a breaking change for every existing deployment. Evaluate
-   when a real non-date use case appears.
+4. **Storage backend interface uses group/version vocabulary.** `list_groups`,
+   `load_script(group, version)`, regex named-captures `?P<group>` /
+   `?P<version>`. Filename templates kept the `plot_`/`script_`/`data_`
+   prefixes (e.g. `plot_{group}_v{N}.png`) — the `{group}` substitution
+   produces the same on-disk names for date-formatted groups, so existing
+   deployments keep working without migration. Default regex patterns were
+   loosened from `\d{8}` to `.+?` / `[^.]+?` so non-date group strings
+   (project codes, branch names, etc.) match.
 
-5. **Inject-vars contract uses `date`/`version`.** User scripts read
-   `inject["date"]` / `inject["version"]`; renaming silently breaks every
-   existing script. Treat as part of the public API; don't change without
-   a migration path.
+5. **Inject-vars contract uses `group`/`version`.** User scripts read
+   `inject["group"]` / `inject["version"]`; the starter template emits
+   `group = "..."` accordingly. The previous `date` key was renamed in the
+   coordinated refactor — there is no compat shim, so any user script that
+   read `inject["date"]` from before the rename must be updated.
 
 6. **2-axis variant (collapse group into id).** Discussed and deferred. The
    3-axis split is load-bearing for auto-versioning, `version_diff`,
-   `template_for_date`, and the "new data arrived" workflow (F20) — all
+   `template_for_group`, and the "new data arrived" workflow (F20) — all
    well-defined only when versions share inputs within a group. A
    `group_axis=False` opt-in (hide the group dropdown, default group to a
    constant) could ship later for one-off-script galleries. Don't collapse
