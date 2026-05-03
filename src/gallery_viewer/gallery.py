@@ -750,9 +750,30 @@ class Gallery:
                                 dcc.Store(id="gv-active-group", data=""),
                             ],
                         ),
+                        # ── MAIN PANEL: hosts panes; only one visible at a time
+                        # Visibility is owned by show_pane (see callbacks
+                        # below); each pane owns its own content callbacks.
+                        # Adding a new pane = add a Div with id="gv-pane-X"
+                        # and a case in show_pane. The tree never references
+                        # pane ids — it just writes navigation state to its
+                        # stores; panes consume that state.
+                        dbc.Col(
+                            width=10,
+                            children=[
+                                # Gallery pane — visible when gv-active-group
+                                # is non-empty. Filled by render_gallery_panel.
+                                html.Div(
+                                    id="gv-pane-gallery",
+                                    style={"display": "none"},
+                                ),
+                                # Detail pane — visible when gv-active-group
+                                # is empty. Owns editor + preview cluster.
+                                html.Div(
+                                    id="gv-pane-detail",
+                                    children=dbc.Row([
                         # ── EDITOR ────────────────────────────────────────
                         dbc.Col(
-                            width=4,
+                            width=5,
                             children=[
                                 dbc.Row(
                                     [
@@ -1125,7 +1146,7 @@ class Gallery:
                         ),
                         # ── PREVIEW ───────────────────────────────────────
                         dbc.Col(
-                            width=6,
+                            width=7,
                             children=[
                                 html.Div(
                                     [
@@ -1171,6 +1192,10 @@ class Gallery:
                                         "overflowY": "auto",
                                     },
                                     children=_no_data(),
+                                ),
+                            ],
+                        ),
+                                    ]),
                                 ),
                             ],
                         ),
@@ -1573,18 +1598,35 @@ class Gallery:
                 collapsed.append(group_path)
             return collapsed, group_path
 
-        # -- Render gallery view in the right panel when a branch is active --
-        # Empty active_group means "show leaf detail" — let load_version
-        # drive the panel as before.
+        # -- Pane dispatch: only one pane visible at a time --
+        # Single source of truth for "what view is showing". Adding a new
+        # pane = add another Output here and another case. Tree callbacks
+        # only need to set the navigation stores — they don't care which
+        # pane ends up visible.
         @app.callback(
-            Output("gv-output-panel", "children", allow_duplicate=True),
-            Output("gv-data-panel", "children", allow_duplicate=True),
+            Output("gv-pane-detail", "style"),
+            Output("gv-pane-gallery", "style"),
+            Input("gv-active-group", "data"),
+        )
+        def show_pane(active_group):
+            hidden = {"display": "none"}
+            visible: dict = {}
+            if active_group:
+                return hidden, visible
+            return visible, hidden
+
+        # -- Branch (gallery) pane content --
+        # Owns gv-pane-gallery only. The detail pane's components remain
+        # mounted but hidden (see show_pane), so we don't need to clear
+        # them — no risk of stomping on the detail callbacks' outputs.
+        @app.callback(
+            Output("gv-pane-gallery", "children"),
             Input("gv-active-group", "data"),
             prevent_initial_call=True,
         )
         def render_gallery_panel(active_group):
             if not active_group:
-                return dash.no_update, dash.no_update
+                return dash.no_update
             descriptions: dict[str, str] = {}
             if self._config_path:
                 config = load_config(self._config_path)
@@ -1594,7 +1636,7 @@ class Gallery:
                     if desc:
                         descriptions[name] = desc
             tree = _build_sidebar_tree(self.plot_names)
-            return _render_gallery_view(tree, active_group, descriptions), _no_data()
+            return _render_gallery_view(tree, active_group, descriptions)
 
         # -- Click nav item → select plot, load its groups, exit gallery --
         # Clearing gv-active-group restores the leaf detail view in the

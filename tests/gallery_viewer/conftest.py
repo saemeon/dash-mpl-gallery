@@ -26,7 +26,7 @@ def make_gallery_dir(
     root: Path,
     name: str,
     *,
-    dates_versions: dict[str, int] | None = None,
+    groups_versions: dict[str, int] | None = None,
     with_data: bool = True,
     with_plots: bool = True,
 ) -> Path:
@@ -37,7 +37,7 @@ def make_gallery_dir(
     root: parent directory (typically ``tmp_path``).
     name: subdirectory name; also embedded into the script's configurator
           so multi-backend tests can verify routing by content.
-    dates_versions: ``{"YYYYMMDD": n_versions}``. Default = ``{"20240101": 1}``.
+    groups_versions: ``{"YYYYMMDD": n_versions}``. Default = ``{"20240101": 1}``.
     with_data: if True, write a CSV per group.
     with_plots: if True, write a fake PNG for v1 of each group.
 
@@ -45,8 +45,8 @@ def make_gallery_dir(
     -------
     The created subdirectory path.
     """
-    if dates_versions is None:
-        dates_versions = {"20240101": 1}
+    if groups_versions is None:
+        groups_versions = {"20240101": 1}
 
     d = root / name
     d.mkdir()
@@ -54,7 +54,7 @@ def make_gallery_dir(
     (d / "plots").mkdir()
     (d / "scripts").mkdir()
 
-    for group, n_versions in dates_versions.items():
+    for group, n_versions in groups_versions.items():
         if with_data:
             df = pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
             df.to_csv(d / "data" / f"data_{group}.csv", index=False)
@@ -102,7 +102,7 @@ def multi_backend_gallery(tmp_path):
 @pytest.fixture
 def gallery_with_chain(tmp_path):
     """A single-backend Gallery with one group and v1, v2, v3 — for diff/chain tests."""
-    d = make_gallery_dir(tmp_path, "main", dates_versions={"20240101": 3})
+    d = make_gallery_dir(tmp_path, "main", groups_versions={"20240101": 3})
     return Gallery(backend=FileSystemBackend(d))
 
 

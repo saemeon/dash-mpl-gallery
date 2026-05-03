@@ -27,7 +27,7 @@ from gallery_viewer.gallery import Gallery
 
 
 def _make_gallery_dir(
-    root: Path, name: str, *, dates_versions: dict[str, int] | None = None
+    root: Path, name: str, *, groups_versions: dict[str, int] | None = None
 ) -> Path:
     """Build a minimal valid gallery dir under ``root/name`` and return it.
 
@@ -35,14 +35,14 @@ def _make_gallery_dir(
     Each script's configurator embeds the backend name so the UI test can
     distinguish which backend the editor is currently showing.
     """
-    if dates_versions is None:
-        dates_versions = {"20240101": 1}
+    if groups_versions is None:
+        groups_versions = {"20240101": 1}
     d = root / name
     d.mkdir()
     (d / "data").mkdir()
     (d / "plots").mkdir()
     (d / "scripts").mkdir()
-    for group, n_versions in dates_versions.items():
+    for group, n_versions in groups_versions.items():
         pd.DataFrame({"x": [1], "y": [2]}).to_csv(
             d / "data" / f"data_{group}.csv", index=False
         )

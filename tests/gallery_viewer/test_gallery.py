@@ -635,7 +635,7 @@ class TestGetBackend:
 # ---------------------------------------------------------------------------
 
 
-def _make_gallery_dir(root, name, *, dates_versions=None):
+def _make_gallery_dir(root, name, *, groups_versions=None):
     """Build a minimal valid gallery dir under ``root/name`` and return it.
 
     Mirrors ``conftest.make_gallery_dir`` (duplicated locally because the
@@ -646,16 +646,16 @@ def _make_gallery_dir(root, name, *, dates_versions=None):
     ----------
     root: parent directory.
     name: subdirectory name.
-    dates_versions: ``{"YYYYMMDD": n_versions}``. Default = ``{"20240101": 1}``.
+    groups_versions: ``{"YYYYMMDD": n_versions}``. Default = ``{"20240101": 1}``.
     """
-    if dates_versions is None:
-        dates_versions = {"20240101": 1}
+    if groups_versions is None:
+        groups_versions = {"20240101": 1}
     d = root / name
     d.mkdir()
     (d / "data").mkdir()
     (d / "plots").mkdir()
     (d / "scripts").mkdir()
-    for group, n_versions in dates_versions.items():
+    for group, n_versions in groups_versions.items():
         pd.DataFrame({"x": [1], "y": [2]}).to_csv(
             d / "data" / f"data_{group}.csv", index=False
         )
@@ -1322,7 +1322,7 @@ class TestParseUrlState:
         assert state["param_overrides"] == {}
 
     def test_render_route_returns_artifact_bytes(self, make_dir):
-        d = make_dir("main", dates_versions={"20240101": 1})
+        d = make_dir("main", groups_versions={"20240101": 1})
         g = Gallery(backend=FileSystemBackend(d))
         client = g.app.server.test_client()
         resp = client.get("/render?id=main&group=20240101&version=1")
@@ -1331,14 +1331,14 @@ class TestParseUrlState:
         assert resp.data  # non-empty
 
     def test_render_route_404_for_unknown_version(self, make_dir):
-        d = make_dir("main", dates_versions={"20240101": 1})
+        d = make_dir("main", groups_versions={"20240101": 1})
         g = Gallery(backend=FileSystemBackend(d))
         client = g.app.server.test_client()
         resp = client.get("/render?id=main&group=20240101&version=99")
         assert resp.status_code == 404
 
     def test_render_route_400_when_selectors_missing(self, make_dir):
-        d = make_dir("main", dates_versions={"20240101": 1})
+        d = make_dir("main", groups_versions={"20240101": 1})
         g = Gallery(backend=FileSystemBackend(d))
         client = g.app.server.test_client()
         resp = client.get("/render?id=main")
@@ -1346,17 +1346,17 @@ class TestParseUrlState:
 
     def test_url_keys_are_configurable(self, make_dir):
         # A "Plot/Date"-flavoured gallery overrides URL keys
-        d = make_dir("main", dates_versions={"20240101": 1})
+        d = make_dir("main", groups_versions={"20240101": 1})
         g = Gallery(
             backend=FileSystemBackend(d),
             item_url_key="plot",
-            group_url_key="group",
+            group_url_key="date",
         )
-        state = g.parse_url_state("?plot=main&group=20240101&version=1")
+        state = g.parse_url_state("?plot=main&date=20240101&version=1")
         assert state["item"] == "main"
         assert state["group"] == "20240101"
         # Keys returned use internal axis names regardless of URL key choice
-        assert "plot" not in state and "group" not in state
+        assert "plot" not in state and "date" not in state
 
 
 # ---------------------------------------------------------------------------
@@ -1727,7 +1727,7 @@ class TestVersionSequences:
     @pytest.mark.parametrize("n_versions", [1, 2, 3, 5, 10])
     def test_list_versions_dense_chain(self, tmp_path, n_versions):
         """A dense chain v1..vN lists all N versions in order."""
-        d = _make_gallery_dir(tmp_path, "main", dates_versions={"20240101": n_versions})
+        d = _make_gallery_dir(tmp_path, "main", groups_versions={"20240101": n_versions})
         g = Gallery(backend=FileSystemBackend(d))
         versions = g.list_versions(None, "20240101")
         assert versions == [str(i) for i in range(1, n_versions + 1)]
@@ -1761,7 +1761,7 @@ class TestVersionSequences:
 
     def test_export_inject_vars_uses_specified_version(self, tmp_path):
         """OUTPUT_PATH reflects the version argument, not 'latest' or 'v1'."""
-        d = _make_gallery_dir(tmp_path, "main", dates_versions={"20240101": 3})
+        d = _make_gallery_dir(tmp_path, "main", groups_versions={"20240101": 3})
         g = Gallery(backend=FileSystemBackend(d))
         for v in ["1", "2", "3"]:
             result = g.export_inject_vars(None, "20240101", v)
@@ -1785,7 +1785,7 @@ class TestVersionSequences:
     )
     def test_list_dates_across_shapes(self, tmp_path, groups):
         """list_groups() returns every group in the gallery, regardless of version count."""
-        d = _make_gallery_dir(tmp_path, "main", dates_versions=groups)
+        d = _make_gallery_dir(tmp_path, "main", groups_versions=groups)
         g = Gallery(backend=FileSystemBackend(d))
         listed = g.list_groups(None)
         assert set(listed) == set(groups.keys())
@@ -1825,7 +1825,7 @@ class TestTagsUserStories:
 
     def test_collaborator_story_filter_to_published(self, tmp_path):
         """#8 — Among many versions, only `published` ones surface in the filter."""
-        d = _make_gallery_dir(tmp_path, "main", dates_versions={"20240101": 5})
+        d = _make_gallery_dir(tmp_path, "main", groups_versions={"20240101": 5})
         g = Gallery(backend=FileSystemBackend(d))
         g.add_tag(None, "20240101", "2", "published")
         g.add_tag(None, "20240101", "4", "published")

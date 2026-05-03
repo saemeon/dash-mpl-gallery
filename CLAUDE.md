@@ -138,23 +138,32 @@ feature.
   to scan the sidebar one item at a time. Real composite thumbnails
   (mosaic of latest leaf PNGs) are deliberately deferred — v1 uses a glyph.
 
-  Two implementation choices worth knowing if you extend this:
+  Three implementation choices worth knowing if you extend this:
 
-  1. **Card ids reuse the tree ids.** Leaf cards use
+  1. **Layout is sidebar (tree) + main panel (panes).** The main panel hosts
+     siblings ``gv-pane-detail`` and ``gv-pane-gallery``; only one is
+     visible at a time. The detail pane wraps the existing editor + preview
+     row (now ``width=5`` / ``width=7`` inside a nested grid that fills
+     the ``width=10`` main col). The gallery pane is full-width within main
+     and is filled by ``render_gallery_panel``. **Adding a new pane** =
+     add a Div with ``id="gv-pane-X"``, add an Output to ``show_pane``,
+     write a content callback that targets ``gv-pane-X``. The tree never
+     references pane ids.
+  2. **Card ids reuse the tree ids.** Leaf cards use
      ``{"type": "gv-nav-item", "index": <name>}`` and subfolder cards use
      ``{"type": "gv-tree-group", "index": <path>}`` — identical to the
      sidebar entries. The existing pattern-matching handlers (``nav_click``
      and ``toggle_group``) catch card clicks for free, so adding the gallery
      required no new click callbacks. If you change card ids, you also have
      to wire up parallel callbacks.
-  2. **``gv-active-group`` is the single source of truth for view mode.**
-     Empty string = leaf-detail mode (the existing ``load_version`` callback
-     owns ``gv-output-panel``). Non-empty = gallery mode (the
-     ``render_gallery_panel`` callback owns it). The gallery callback
-     returns ``no_update`` when the store is empty so the two callbacks
-     don't race over the panel — they take turns based on store state.
+  3. **``gv-active-group`` is the single source of truth for pane visibility.**
+     ``show_pane`` reads it and toggles the ``style`` of every pane Div
+     (display: none vs {}). Empty string = detail pane visible; non-empty
+     = gallery pane visible. Each pane owns its own content callbacks and
+     never writes outside its own Div, so there is no cross-pane racing.
      ``toggle_group`` writes the path on group click; ``nav_click`` clears
-     it on leaf click.
+     it on leaf click. The detail pane's components stay mounted (just
+     hidden) so its many callbacks keep working without pane-aware guards.
 
 ### Still open / documentation follow-up
 - **D. Generic framing:** package is framework-neutral in architecture, but docs
@@ -177,7 +186,7 @@ feature.
 
 ### Facade pattern
 `Gallery` exposes a thin facade over `StorageBackend` for every operation
-the UI needs (`list_dates`, `load_script`, `save_script`, `run_script`,
+the UI needs (`list_groups`, `load_script`, `save_script`, `run_script`,
 `version_diff`, `export_inject_vars`, `apply_params_to_script`,
 `version_diff_label`, …). Callbacks are kept thin: parse Dash inputs,
 delegate to a facade method, format the result for Dash outputs.
@@ -219,13 +228,13 @@ This section is the canonical high-level requirements view for the project.
 | # | Requirement | Status |
 |---|---|---|
 | F1 | Browse multiple named plots in a sidebar | Done |
-| F2 | Select date and version for each plot | Done |
+| F2 | Select group and version for each item | Done |
 | F3 | View plot images and data tables | Done |
 | F4 | Edit the script in a syntax-highlighted editor | Done (dash-ace) |
 | F5 | Detect typed parameters and render form fields | Done |
 | F6 | Run the script and show live preview | Done |
 | F7 | Save as a new version (with confirmation + author) | Done |
-| F8 | Refresh dates/versions from disk | Done |
+| F8 | Refresh groups/versions from disk | Done |
 | F9 | Search/filter plots by name | Done |
 | F10 | Add new plots from the dashboard | Done (with gallery.json) |
 | F11 | Pluggable storage backend | Done |
@@ -237,16 +246,16 @@ This section is the canonical high-level requirements view for the project.
 | F17 | Read-only mode (hide script editor) | Done |
 | F18 | Export standalone .py script | Done |
 | F19 | Author metadata on save | Done |
-| F20 | New Date button (detect uncharted data dates) | Done |
-| F21 | Copy from latest version when creating new date | Done |
+| F20 | New Group button (detect uncharted data groups) | Done |
+| F21 | Copy from latest version when creating new group | Done |
 | F22 | RUN does not modify editor (injection at execution time) | Done |
-| F23 | Save uses selected date, not today | Done |
+| F23 | Save uses selected group, not today's date | Done |
 | F24 | Save includes per-version change note (intent capture) | Done |
 | F25 | Save stamps provenance metadata (lineage/runtime context) | Done |
 | F26 | Version tags (add/remove/filter) | Done |
-| F27 | Save modal context pre-fill (author/date/version context) | Done |
+| F27 | Save modal context pre-fill (author/group/version context) | Done |
 | F28 | URL deep-linking: selectors + configurator overrides via query string | Done |
-| F29 | `/render` endpoint: cached PNG bytes for `?plot=&date=&version=` | Done |
+| F29 | `/render` endpoint: cached PNG bytes for `?id=&group=&version=` | Done |
 | F30 | Branch-click gallery view (cards for direct leaves + drillable subfolders) | Done |
 
 ### Non-functional requirements
