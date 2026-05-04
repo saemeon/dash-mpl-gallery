@@ -29,12 +29,15 @@ def bind(gallery: Gallery) -> None:
     # No callbacks today — gallery work happens in _layout(branch_path=...).
 
 
-def _layout(branch_path: str | None = None) -> html.Div:
+def _layout(branch_path: str | None = None, **_kwargs: object) -> html.Div:
     """Render the branch gallery for *branch_path*.
 
     Decoded `branch_path` is the slash-delimited group path (e.g.
     ``"finance/sub"``). Empty string renders the root view (all top-level
     items + subfolder cards). The host Gallery must have been bound first.
+
+    ``**_kwargs`` swallows query-string params (e.g. ``?id=...`` left over
+    from the detail page's URL) that Dash forwards into the layout call.
     """
     from gallery_viewer.config import load_config
     from gallery_viewer.gallery import _build_sidebar_tree, _render_gallery_view

@@ -85,11 +85,11 @@ class TestRenderTreeNode:
     def test_group_renders_header_and_children(self):
         tree = _build_sidebar_tree(["g/x", "g/y"])
         result = _render_tree_node(tree, [], None, {})
-        # First element: group header
+        # group header, then injected Overview leaf, then the two leaves
         assert result[0].id == {"type": "gv-tree-group", "index": "g"}
-        # Then two leaf items
-        assert result[1].id == {"type": "gv-nav-item", "index": "g/x"}
-        assert result[2].id == {"type": "gv-nav-item", "index": "g/y"}
+        assert result[1].id == {"type": "gv-overview", "index": "g"}
+        assert result[2].id == {"type": "gv-nav-item", "index": "g/x"}
+        assert result[3].id == {"type": "gv-nav-item", "index": "g/y"}
 
     def test_collapsed_group_hides_children(self):
         tree = _build_sidebar_tree(["g/x", "g/y"])
@@ -101,11 +101,13 @@ class TestRenderTreeNode:
     def test_nested_group_headers(self):
         tree = _build_sidebar_tree(["a/b/leaf"])
         result = _render_tree_node(tree, [], None, {})
-        # a header, b header, leaf
-        assert len(result) == 3
+        # a header, a Overview, b header, a/b Overview, leaf
+        assert len(result) == 5
         assert result[0].id == {"type": "gv-tree-group", "index": "a"}
-        assert result[1].id == {"type": "gv-tree-group", "index": "a/b"}
-        assert result[2].id == {"type": "gv-nav-item", "index": "a/b/leaf"}
+        assert result[1].id == {"type": "gv-overview", "index": "a"}
+        assert result[2].id == {"type": "gv-tree-group", "index": "a/b"}
+        assert result[3].id == {"type": "gv-overview", "index": "a/b"}
+        assert result[4].id == {"type": "gv-nav-item", "index": "a/b/leaf"}
 
     def test_collapsing_parent_hides_all_descendants(self):
         tree = _build_sidebar_tree(["a/b/leaf1", "a/leaf2"])
@@ -117,11 +119,12 @@ class TestRenderTreeNode:
     def test_collapsing_child_only(self):
         tree = _build_sidebar_tree(["a/b/leaf1", "a/leaf2"])
         result = _render_tree_node(tree, ["a/b"], None, {})
-        # a header, b header (collapsed), a/leaf2
-        assert len(result) == 3
+        # a header, a Overview, b header (collapsed), a/leaf2
+        assert len(result) == 4
         assert result[0].id == {"type": "gv-tree-group", "index": "a"}
-        assert result[1].id == {"type": "gv-tree-group", "index": "a/b"}
-        assert result[2].id == {"type": "gv-nav-item", "index": "a/leaf2"}
+        assert result[1].id == {"type": "gv-overview", "index": "a"}
+        assert result[2].id == {"type": "gv-tree-group", "index": "a/b"}
+        assert result[3].id == {"type": "gv-nav-item", "index": "a/leaf2"}
 
     def test_active_plot_styling(self):
         tree = _build_sidebar_tree(["alpha", "beta"])
@@ -132,8 +135,8 @@ class TestRenderTreeNode:
     def test_leaf_label_uses_last_segment(self):
         tree = _build_sidebar_tree(["group/my_plot"])
         result = _render_tree_node(tree, [], None, {})
-        # result[0] is group header, result[1] is the leaf
-        leaf_div = result[1]
+        # group header, group Overview, then the leaf
+        leaf_div = result[2]
         label_div = leaf_div.children[0]
         assert label_div.children == "My Plot"
 
@@ -154,12 +157,12 @@ class TestRenderTreeNode:
     def test_indentation_increases_with_depth(self):
         tree = _build_sidebar_tree(["a/b/leaf"])
         result = _render_tree_node(tree, [], None, {})
-        # depth 0: a header
+        # result[0]: a header at depth 0 — paddingLeft = 0*14+8 = 8
         assert result[0].style["paddingLeft"] == "8px"
-        # depth 1: b header
-        assert result[1].style["paddingLeft"] == "22px"
-        # depth 2: leaf
-        assert result[2].style["paddingLeft"] == "38px"
+        # result[2]: b header at depth 1 — paddingLeft = 1*14+8 = 22
+        assert result[2].style["paddingLeft"] == "22px"
+        # result[4]: leaf at depth 2 — paddingLeft = 2*14+10 = 38
+        assert result[4].style["paddingLeft"] == "38px"
 
     def test_chevron_collapsed_vs_expanded(self):
         tree = _build_sidebar_tree(["g/x"])
@@ -179,17 +182,22 @@ class TestRenderTreeNode:
     def test_mixed_groups_and_flat(self):
         tree = _build_sidebar_tree(["standalone", "finance/rev", "finance/cost"])
         result = _render_tree_node(tree, [], None, {})
-        # Groups come first, then leaves at root level
+        # Group, then its Overview, then group leaves, then root leaves
         assert result[0].id == {"type": "gv-tree-group", "index": "finance"}
-        assert result[1].id == {"type": "gv-nav-item", "index": "finance/rev"}
-        assert result[2].id == {"type": "gv-nav-item", "index": "finance/cost"}
-        assert result[3].id == {"type": "gv-nav-item", "index": "standalone"}
+        assert result[1].id == {"type": "gv-overview", "index": "finance"}
+        assert result[2].id == {"type": "gv-nav-item", "index": "finance/rev"}
+        assert result[3].id == {"type": "gv-nav-item", "index": "finance/cost"}
+        assert result[4].id == {"type": "gv-nav-item", "index": "standalone"}
 
     def test_three_level_nesting(self):
         tree = _build_sidebar_tree(["a/b/c/deep_leaf"])
         result = _render_tree_node(tree, [], None, {})
-        assert len(result) == 4  # a, b, c headers + leaf
+        # a, a-overview, b, ab-overview, c, abc-overview, leaf
+        assert len(result) == 7
         assert result[0].id == {"type": "gv-tree-group", "index": "a"}
-        assert result[1].id == {"type": "gv-tree-group", "index": "a/b"}
-        assert result[2].id == {"type": "gv-tree-group", "index": "a/b/c"}
-        assert result[3].id == {"type": "gv-nav-item", "index": "a/b/c/deep_leaf"}
+        assert result[1].id == {"type": "gv-overview", "index": "a"}
+        assert result[2].id == {"type": "gv-tree-group", "index": "a/b"}
+        assert result[3].id == {"type": "gv-overview", "index": "a/b"}
+        assert result[4].id == {"type": "gv-tree-group", "index": "a/b/c"}
+        assert result[5].id == {"type": "gv-overview", "index": "a/b/c"}
+        assert result[6].id == {"type": "gv-nav-item", "index": "a/b/c/deep_leaf"}

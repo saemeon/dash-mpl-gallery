@@ -166,6 +166,33 @@ def _build_sidebar_tree(names: list[str]) -> dict:
     return tree
 
 
+def _overview_entry(group_path: str, indent_px: int) -> Any:
+    """Render the per-branch ``Overview`` leaf in the sidebar tree.
+
+    Clicking writes ``_pages_location.pathname = "/branch/<group_path>"`` so
+    the gallery page mounts. Empty ``group_path`` is the root overview
+    (gallery for the whole tree). Visually distinguished from script leaves
+    by a folder glyph and lighter typography.
+    """
+    return html.Div(
+        [
+            html.Span("\U0001f4c1", style={"marginRight": "6px"}),
+            html.Span("Overview", style={"fontSize": "12px"}),
+        ],
+        id={"type": "gv-overview", "index": group_path},
+        n_clicks=0,
+        style={
+            "padding": "6px 10px",
+            "paddingLeft": f"{indent_px + 10}px",
+            "marginBottom": "4px",
+            "borderRadius": "4px",
+            "cursor": "pointer",
+            "color": "#cfcfcf",
+            "fontStyle": "italic",
+        },
+    )
+
+
 def _render_tree_node(
     tree: dict,
     collapsed: list[str],
@@ -174,9 +201,20 @@ def _render_tree_node(
     depth: int = 0,
     path_prefix: str = "",
 ) -> list:
-    """Recursively render a sidebar tree node into Dash components."""
-    children = []
+    """Recursively render a sidebar tree node into Dash components.
+
+    Each branch (and the root) gets an injected ``Overview`` leaf as its
+    first child \u2014 clicking it opens the branch's gallery view. Branches
+    themselves are collapse-only; they no longer navigate on click.
+    """
+    children: list = []
     indent = depth * 14
+
+    # Inject an "Overview" leaf for the current branch (skip root —
+    # empty path_prefix would not match the /branch/<branch_path>
+    # template, and root's contents are already visible at top level).
+    if path_prefix:
+        children.append(_overview_entry(path_prefix, indent))
 
     # Render sub-groups first, then leaves
     group_keys = [k for k in tree if k != "__leaves__"]
@@ -341,8 +379,9 @@ def _leaf_card(name: str, description: str) -> Any:
 def _subfolder_card(group_path: str, leaf_count: int) -> Any:
     """Render a sub-group as a clickable card showing its leaf count.
 
-    Reuses ``gv-tree-group`` ids so the existing group-click callback drives
-    the drill-down (setting the new active group and showing its gallery).
+    Uses ``gv-overview`` ids — clicking drills into the sub-branch's
+    gallery (i.e. its Overview leaf). This is the only way to navigate
+    into a branch now that branch-row clicks only collapse/expand.
     """
     label = group_path.rsplit("/", 1)[-1].replace("_", " ").title()
     return html.Div(
@@ -361,7 +400,7 @@ def _subfolder_card(group_path: str, leaf_count: int) -> Any:
                 style={"fontSize": "11px", "color": "#888"},
             ),
         ],
-        id={"type": "gv-tree-group", "index": group_path},
+        id={"type": "gv-overview", "index": group_path},
         n_clicks=0,
         style=_gallery_card_style(),
     )
@@ -1227,6 +1266,15 @@ class Gallery:
                 # the page_container stale. All our URL-driven callbacks
                 # target/read "_pages_location".
                 dcc.Store(id="gv-url-overrides"),
+                # In-progress edit buffer (session-scoped). Detail page
+                # writes mid-edit script text + identity (leaf/group/version)
+                # here on editor change; on remount it restores the buffer
+                # if identity still matches. Solves the Pages-migration
+                # regression where detail ↔ branch ↔ detail navigation
+                # would otherwise wipe unsaved typing. Schema:
+                #     {"leaf_id": str, "group": str, "version": str,
+                #      "script": str}
+                dcc.Store(id="gv-edit-buffer", storage_type="session"),
                 # Per-session context — seeded from Gallery(context=...) at
                 # init. Multi-user deployments override via a login callback:
                 #     Output("gv-context", "data") <- {"author": username, ...}
@@ -1593,18 +1641,39 @@ class Gallery:
             tree = _build_sidebar_tree(names)
             return _render_tree_node(tree, collapsed or [], active_plot, descriptions)
 
-        # -- Tree-group click: toggle collapse AND navigate to gallery --
-        # Subfolder cards in the gallery view share the same pattern id, so
-        # drilling deeper inside the gallery navigates the URL the same way
-        # — the page handler picks up the new branch_path on re-render.
+        # -- Tree-group click: toggle collapse only --
+        # Branches no longer navigate; the gallery for a branch is reached
+        # via its injected "Overview" leaf (id type ``gv-overview``).
         @dash.callback(
             Output("gv-sidebar-collapsed", "data"),
-            Output("_pages_location", "pathname", allow_duplicate=True),
             Input({"type": "gv-tree-group", "index": ALL}, "n_clicks"),
             State("gv-sidebar-collapsed", "data"),
             prevent_initial_call=True,
         )
         def toggle_group(n_clicks_list, collapsed):
+            if not any(n_clicks_list):
+                return dash.no_update
+            triggered = ctx.triggered_id
+            if triggered is None:
+                return dash.no_update
+            group_path = triggered["index"]
+            collapsed = list(collapsed or [])
+            if group_path in collapsed:
+                collapsed.remove(group_path)
+            else:
+                collapsed.append(group_path)
+            return collapsed
+
+        # -- Overview-leaf click → navigate to that branch's gallery page --
+        # Used by both the sidebar Overview leaves and the subfolder cards
+        # rendered inside a gallery view (drill-down).
+        @dash.callback(
+            Output("_pages_location", "pathname", allow_duplicate=True),
+            Output("_pages_location", "search", allow_duplicate=True),
+            Input({"type": "gv-overview", "index": ALL}, "n_clicks"),
+            prevent_initial_call=True,
+        )
+        def overview_click(n_clicks_list):
             from urllib.parse import quote
             if not any(n_clicks_list):
                 return dash.no_update, dash.no_update
@@ -1612,20 +1681,20 @@ class Gallery:
             if triggered is None:
                 return dash.no_update, dash.no_update
             group_path = triggered["index"]
-            collapsed = list(collapsed or [])
-            if group_path in collapsed:
-                collapsed.remove(group_path)
-            else:
-                collapsed.append(group_path)
-            return collapsed, f"/branch/{quote(group_path, safe='')}"
+            # Empty group_path = root overview. Use trailing "" for the
+            # path_template so Dash still matches /branch/<branch_path>.
+            return f"/branch/{quote(group_path, safe='')}", ""
 
         # -- Click nav item → navigate to detail page for that leaf --
         # The URL becomes the source of truth: pathname goes to "/" and
         # ?id=<leaf> drives selector population on the detail page.
+        # Only outputs that live in the shell are written here — gv-group
+        # lives in the detail page, so its options/value are populated by
+        # init_groups_for_plot once the page remounts. (If we wrote them
+        # here, Dash would skip the *entire* callback when the detail page
+        # is unmounted, breaking nav from the gallery view.)
         @dash.callback(
             Output("gv-plot-select", "data", allow_duplicate=True),
-            Output("gv-group", "options"),
-            Output("gv-group", "value"),
             Output("_pages_location", "pathname", allow_duplicate=True),
             Output("_pages_location", "search", allow_duplicate=True),
             Input({"type": "gv-nav-item", "index": dash.ALL}, "n_clicks"),
@@ -1633,34 +1702,41 @@ class Gallery:
         )
         def nav_click(n_clicks_list):
             if not any(n_clicks_list):
-                return (dash.no_update,) * 5
+                return (dash.no_update,) * 3
             triggered = ctx.triggered_id
             if triggered is None:
-                return (dash.no_update,) * 5
+                return (dash.no_update,) * 3
             item_id = triggered["index"]
-            groups = self.list_groups(item_id)
-            opts = [{"label": d, "value": d} for d in groups]
             return (
                 item_id,
-                opts,
-                (groups[0] if groups else None),
                 "/",
                 f"?{self.item_url_key}={item_id}",
             )
 
         # -- Also load groups on initial plot select --
+        # Prefers gv-edit-buffer's group when it belongs to this leaf, so
+        # detail-page remount after a branch detour lands the user back on
+        # the group they were editing (not the newest one).
         @dash.callback(
             Output("gv-group", "options", allow_duplicate=True),
             Output("gv-group", "value", allow_duplicate=True),
             Input("gv-plot-select", "data"),
+            State("gv-edit-buffer", "data"),
             prevent_initial_call="initial_duplicate",
         )
-        def init_groups_for_plot(item_id):
+        def init_groups_for_plot(item_id, buffer):
             if not item_id:
                 return [], None
             groups = self.list_groups(item_id)
             opts = [{"label": d, "value": d} for d in groups]
-            return opts, (groups[0] if groups else None)
+            preferred = None
+            if (
+                isinstance(buffer, dict)
+                and buffer.get("leaf_id") == item_id
+                and buffer.get("group") in groups
+            ):
+                preferred = buffer["group"]
+            return opts, (preferred or (groups[0] if groups else None))
 
         # -- Refresh button → reload groups + versions for current plot --
         @dash.callback(
@@ -1687,19 +1763,32 @@ class Gallery:
             return group_opts, group_val, ver_opts, ver_val
 
         # -- Update version dropdown when group changes --
+        # Prefers gv-edit-buffer's version when it belongs to this
+        # (leaf, group), so detail-page remount lands on the version the
+        # user was editing rather than the latest.
         @dash.callback(
             Output("gv-version", "options"),
             Output("gv-version", "value", allow_duplicate=True),
             Input("gv-group", "value"),
             State("gv-plot-select", "data"),
+            State("gv-edit-buffer", "data"),
             prevent_initial_call=True,
         )
-        def update_versions(group, item_id):
+        def update_versions(group, item_id, buffer):
             if not group:
                 return [], None
             versions = self.list_versions(item_id, group)
             opts = [{"label": f"v{v}", "value": v} for v in versions]
-            return opts, versions[-1] if versions else None
+            preferred = None
+            if (
+                isinstance(buffer, dict)
+                and buffer.get("leaf_id") == item_id
+                and buffer.get("group") == group
+            ):
+                v = buffer.get("version")
+                if v in versions or (v is not None and str(v) in {str(x) for x in versions}):
+                    preferred = v
+            return opts, (preferred if preferred is not None else (versions[-1] if versions else None))
 
         # -- URL deep-link → selectors + override store (initial load + nav) --
         @dash.callback(
@@ -1720,6 +1809,10 @@ class Gallery:
             )
 
         # -- Load script + data + plot + detect params --
+        # Also restores in-progress edits from gv-edit-buffer when identity
+        # matches: this is what makes detail ↔ branch ↔ detail navigation
+        # non-destructive after the dash.Pages migration (which unmounts
+        # and remounts the editor across page transitions).
         @dash.callback(
             Output("gv-editor-script", "value"),
             Output("gv-param-fields", "children"),
@@ -1731,13 +1824,23 @@ class Gallery:
             Input("gv-version", "value"),
             State("gv-plot-select", "data"),
             State("gv-url-overrides", "data"),
+            State("gv-edit-buffer", "data"),
         )
-        def load_version(group, version, item_id, url_overrides):
+        def load_version(group, version, item_id, url_overrides, buffer):
             if not group or not version:
                 return (*(dash.no_update,) * 6,)
             version = str(version)
             sections = self.load_script(item_id, group, version)
             script_text = sections.to_text()
+            editor_text = script_text
+            if (
+                isinstance(buffer, dict)
+                and buffer.get("leaf_id") == item_id
+                and buffer.get("group") == group
+                and str(buffer.get("version")) == version
+                and buffer.get("script")
+            ):
+                editor_text = buffer["script"]
             param_fields = _build_param_fields(
                 sections.configurator, overrides=url_overrides
             )
@@ -1746,13 +1849,38 @@ class Gallery:
             plot_children = _plot_img(plot_bytes)
             b64 = base64.b64encode(plot_bytes).decode() if plot_bytes else None
             return (
-                script_text,
+                editor_text,
                 param_fields,
                 data_children,
                 plot_children,
                 b64,
                 script_text,
             )
+
+        # -- Write the edit buffer on editor change --
+        # Persists mid-edit text so it survives page transitions. Clears
+        # the buffer when the editor matches the clean (on-disk) script
+        # so that "no unsaved work" leaves no stale buffer behind.
+        @dash.callback(
+            Output("gv-edit-buffer", "data"),
+            Input("gv-editor-script", "value"),
+            State("gv-plot-select", "data"),
+            State("gv-group", "value"),
+            State("gv-version", "value"),
+            State("gv-clean-script-store", "data"),
+            prevent_initial_call=True,
+        )
+        def write_edit_buffer(script, item_id, group, version, clean):
+            if not item_id or not group or not version:
+                return None
+            if not script or script == clean:
+                return None
+            return {
+                "leaf_id": item_id,
+                "group": group,
+                "version": str(version),
+                "script": script,
+            }
 
         # -- RUN button --
         @dash.callback(

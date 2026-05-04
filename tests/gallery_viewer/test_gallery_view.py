@@ -95,7 +95,7 @@ class TestLeafCard:
 class TestSubfolderCard:
     def test_id_uses_group_path(self):
         card = _subfolder_card("finance", 3)
-        assert card.id == {"type": "gv-tree-group", "index": "finance"}
+        assert card.id == {"type": "gv-overview", "index": "finance"}
 
     def test_count_text_singular(self):
         card = _subfolder_card("finance", 1)
@@ -124,7 +124,7 @@ class TestRenderGalleryView:
         cards = grid.children
         # one subfolder card (g) + one leaf card (alpha)
         assert len(cards) == 2
-        assert cards[0].id == {"type": "gv-tree-group", "index": "g"}
+        assert cards[0].id == {"type": "gv-overview", "index": "g"}
         assert cards[1].id == {"type": "gv-nav-item", "index": "alpha"}
 
     def test_subgroup_renders_only_its_contents(self):
@@ -133,7 +133,7 @@ class TestRenderGalleryView:
         cards = view.children[1].children
         # one subfolder (g/sub) + two leaves (g/x, g/y)
         assert len(cards) == 3
-        assert cards[0].id == {"type": "gv-tree-group", "index": "g/sub"}
+        assert cards[0].id == {"type": "gv-overview", "index": "g/sub"}
         assert cards[1].id == {"type": "gv-nav-item", "index": "g/x"}
         assert cards[2].id == {"type": "gv-nav-item", "index": "g/y"}
 
