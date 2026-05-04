@@ -588,7 +588,7 @@ class Gallery:
         _gallery_page.bind(self)
 
         app.layout = self._layout()
-        self._register_callbacks(app)
+        self._register_callbacks()
         self._register_render_route(app)
         return app
 
@@ -1565,9 +1565,9 @@ class Gallery:
     # Callbacks
     # ------------------------------------------------------------------
 
-    def _register_callbacks(self, app: dash.Dash):
+    def _register_callbacks(self) -> None:
         # -- Render sidebar nav list (tree-aware) --
-        @app.callback(
+        @dash.callback(
             Output("gv-gallery-sidebar", "children"),
             Input("gv-gallery-items", "data"),
             Input("gv-search", "value"),
@@ -1597,7 +1597,7 @@ class Gallery:
         # Subfolder cards in the gallery view share the same pattern id, so
         # drilling deeper inside the gallery navigates the URL the same way
         # — the page handler picks up the new branch_path on re-render.
-        @app.callback(
+        @dash.callback(
             Output("gv-sidebar-collapsed", "data"),
             Output("_pages_location", "pathname", allow_duplicate=True),
             Input({"type": "gv-tree-group", "index": ALL}, "n_clicks"),
@@ -1622,7 +1622,7 @@ class Gallery:
         # -- Click nav item → navigate to detail page for that leaf --
         # The URL becomes the source of truth: pathname goes to "/" and
         # ?id=<leaf> drives selector population on the detail page.
-        @app.callback(
+        @dash.callback(
             Output("gv-plot-select", "data", allow_duplicate=True),
             Output("gv-group", "options"),
             Output("gv-group", "value"),
@@ -1649,7 +1649,7 @@ class Gallery:
             )
 
         # -- Also load groups on initial plot select --
-        @app.callback(
+        @dash.callback(
             Output("gv-group", "options", allow_duplicate=True),
             Output("gv-group", "value", allow_duplicate=True),
             Input("gv-plot-select", "data"),
@@ -1663,7 +1663,7 @@ class Gallery:
             return opts, (groups[0] if groups else None)
 
         # -- Refresh button → reload groups + versions for current plot --
-        @app.callback(
+        @dash.callback(
             Output("gv-group", "options", allow_duplicate=True),
             Output("gv-group", "value", allow_duplicate=True),
             Output("gv-version", "options", allow_duplicate=True),
@@ -1687,7 +1687,7 @@ class Gallery:
             return group_opts, group_val, ver_opts, ver_val
 
         # -- Update version dropdown when group changes --
-        @app.callback(
+        @dash.callback(
             Output("gv-version", "options"),
             Output("gv-version", "value", allow_duplicate=True),
             Input("gv-group", "value"),
@@ -1702,7 +1702,7 @@ class Gallery:
             return opts, versions[-1] if versions else None
 
         # -- URL deep-link → selectors + override store (initial load + nav) --
-        @app.callback(
+        @dash.callback(
             Output("gv-plot-select", "data", allow_duplicate=True),
             Output("gv-group", "value", allow_duplicate=True),
             Output("gv-version", "value", allow_duplicate=True),
@@ -1720,7 +1720,7 @@ class Gallery:
             )
 
         # -- Load script + data + plot + detect params --
-        @app.callback(
+        @dash.callback(
             Output("gv-editor-script", "value"),
             Output("gv-param-fields", "children"),
             Output("gv-data-panel", "children"),
@@ -1755,7 +1755,7 @@ class Gallery:
             )
 
         # -- RUN button --
-        @app.callback(
+        @dash.callback(
             Output("gv-console", "children"),
             Output("gv-output-panel", "children", allow_duplicate=True),
             Output("gv-plot-bytes-store", "data", allow_duplicate=True),
@@ -1782,7 +1782,7 @@ class Gallery:
             return console or "(no output)", _render_outputs(result.items), b64
 
         # -- TAGS: update tag row when version changes --
-        @app.callback(
+        @dash.callback(
             Output("gv-tags-row", "children"),
             Output("gv-tag-filter", "options"),
             Input("gv-version", "value"),
@@ -1799,7 +1799,7 @@ class Gallery:
             return tag_badges, tag_options
 
         # -- TAGS: toggle edit modal --
-        @app.callback(
+        @dash.callback(
             Output("gv-edit-tags-modal", "is_open"),
             Output("gv-edit-tags-current", "children"),
             Input("gv-edit-tags-btn", "n_clicks"),
@@ -1837,7 +1837,7 @@ class Gallery:
             return dash.no_update, dash.no_update
 
         # -- TAGS: add/remove tags via modal --
-        @app.callback(
+        @dash.callback(
             Output("gv-new-tag-input", "value"),
             Output("gv-edit-tags-current", "children"),
             Output("gv-tags-row", "children", allow_duplicate=True),
@@ -1893,7 +1893,7 @@ class Gallery:
             return "", tag_list, badges, filter_options
 
         # -- TAGS: filter version dropdown by tag --
-        @app.callback(
+        @dash.callback(
             Output("gv-version", "options"),
             Output("gv-version", "value"),
             Input("gv-tag-filter", "value"),
@@ -1921,7 +1921,7 @@ class Gallery:
             return options, new_value
 
         # -- SAVE: step 1 — open modal --
-        @app.callback(
+        @dash.callback(
             Output("gv-save-modal", "is_open"),
             Input("gv-save-btn", "n_clicks"),
             Input("gv-confirm-save-ok", "n_clicks"),
@@ -1938,7 +1938,7 @@ class Gallery:
         # -- SAVE: step 1.5 — pre-fill author from context store --
         # Fires when the modal opens. Pre-fills from context["author"] if set.
         # The user can still override before submitting.
-        @app.callback(
+        @dash.callback(
             Output("gv-save-author", "value"),
             Input("gv-save-modal", "is_open"),
             State("gv-context", "data"),
@@ -1952,7 +1952,7 @@ class Gallery:
             return dash.no_update
 
         # -- SAVE: step 2 — actual save + refresh gallery --
-        @app.callback(
+        @dash.callback(
             Output("gv-console", "children", allow_duplicate=True),
             Output("gv-output-panel", "children", allow_duplicate=True),
             Output("gv-gallery-items", "data", allow_duplicate=True),
@@ -2025,7 +2025,7 @@ class Gallery:
             )
 
         # -- Update Script from Parameters --
-        @app.callback(
+        @dash.callback(
             Output("gv-editor-script", "value", allow_duplicate=True),
             Input("gv-update-script-btn", "n_clicks"),
             State("gv-editor-script", "value"),
@@ -2038,7 +2038,7 @@ class Gallery:
             return self.apply_params_to_script(script_code, param_values).to_text()
 
         # -- Show/hide Update Script button based on param fields --
-        @app.callback(
+        @dash.callback(
             Output("gv-update-script-row", "children"),
             Input("gv-param-fields", "children"),
         )
@@ -2052,7 +2052,7 @@ class Gallery:
             return None
 
         # -- Feature 1: Toggle script editor visibility --
-        @app.callback(
+        @dash.callback(
             Output("gv-editor-wrapper", "style"),
             Input("gv-show-script", "value"),
         )
@@ -2062,7 +2062,7 @@ class Gallery:
             return {"display": "none"}
 
         # -- Feature 2: Version diff label + change note --
-        @app.callback(
+        @dash.callback(
             Output("gv-version-diff", "children"),
             Input("gv-version", "value"),
             State("gv-group", "value"),
@@ -2105,7 +2105,7 @@ class Gallery:
             return children
 
         # -- Feature 3: New Date button (detect uncharted data) --
-        @app.callback(
+        @dash.callback(
             Output("gv-group", "options", allow_duplicate=True),
             Output("gv-group", "value", allow_duplicate=True),
             Output("gv-version", "options", allow_duplicate=True),
@@ -2153,7 +2153,7 @@ class Gallery:
         # For simplicity, we use a Store-based approach: compare editor vs clean store.
 
         # -- Feature 8: Export standalone script --
-        @app.callback(
+        @dash.callback(
             Output("gv-export-script-download", "data"),
             Input("gv-export-script-btn", "n_clicks"),
             State("gv-editor-script", "value"),
@@ -2185,7 +2185,7 @@ class Gallery:
         # -- Export (only if export_fn provided) --
         if self.export_fn is not None:
 
-            @app.callback(
+            @dash.callback(
                 Output("export-download", "data"),
                 Input("export-btn", "n_clicks"),
                 State("gv-plot-bytes-store", "data"),
@@ -2201,7 +2201,7 @@ class Gallery:
         # -- Add Plot (only if config file is used) --
         if self._config_path:
 
-            @app.callback(
+            @dash.callback(
                 Output("gv-add-plot-modal", "is_open"),
                 Input("gv-add-plot-btn", "n_clicks"),
                 Input("gv-add-plot-cancel", "n_clicks"),
@@ -2213,7 +2213,7 @@ class Gallery:
                 trigger = ctx.triggered_id
                 return trigger == "gv-add-plot-btn"
 
-            @app.callback(
+            @dash.callback(
                 Output("gv-add-plot-feedback", "children"),
                 Output("gv-plot-select", "data", allow_duplicate=True),
                 Output("gv-gallery-items", "data", allow_duplicate=True),

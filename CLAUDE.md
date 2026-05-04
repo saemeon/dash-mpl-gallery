@@ -177,8 +177,9 @@ feature.
      before being inserted into the path (``quote(p, safe='')``) and decoded
      by the page handler (``unquote(branch_path)``).
   5. **Detail callbacks live on the ``Gallery`` class.** The 22 callbacks
-     registered in ``_register_callbacks`` use ``@app.callback`` (TODO:
-     migrate to ``@dash.callback``) and reference IDs that live in
+     registered in ``_register_callbacks`` use ``@dash.callback`` (the
+     module-level form — never ``@app.callback``, so the ``app`` object
+     does not have to be threaded around) and reference IDs that live in
      ``_build_detail_layout`` — i.e., on the detail page. They keep firing
      across page transitions because ``suppress_callback_exceptions=True``
      allows registered callbacks to reference IDs that aren't currently
