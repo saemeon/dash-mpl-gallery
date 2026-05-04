@@ -11,6 +11,11 @@ from gallery_viewer import FileSystemBackend, ScriptSections, StorageBackend
 from gallery_viewer.gallery import Gallery
 
 
+def full_layout_str(g: Gallery) -> str:
+    """Stringify shell layout + detail page layout (mounted via dash.Pages)."""
+    return str(g.app.layout) + str(g._build_detail_layout())
+
+
 @pytest.fixture
 def tmp_gallery(tmp_path):
     """Create a minimal gallery directory with data, scripts, and plots."""
@@ -162,13 +167,13 @@ class TestExportButton:
     def test_no_export_btn_without_fn(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "export-btn" not in layout_str
 
     def test_export_btn_present_with_fn(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend, export_fn=lambda b: b)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "export-btn" in layout_str
 
 
@@ -234,13 +239,13 @@ class TestUpdateScriptButton:
     def test_update_script_btn_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-update-script-btn" in layout_str
 
     def test_update_script_row_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-update-script-row" in layout_str
 
 
@@ -274,13 +279,13 @@ class TestScriptToggle:
     def test_show_script_switch_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-show-script" in layout_str
 
     def test_editor_wrapper_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-editor-wrapper" in layout_str
 
 
@@ -332,7 +337,7 @@ class TestDiffConfigurator:
     def test_version_diff_element_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-version-diff" in layout_str
 
 
@@ -380,7 +385,7 @@ class TestNewDate:
     def test_new_date_btn_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-new-group-btn" in layout_str
 
     def test_find_uncharted_dates(self, tmp_path):
@@ -424,13 +429,13 @@ class TestDirtyFlag:
     def test_clean_script_store_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-clean-script-store" in layout_str
 
     def test_confirm_navigate_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-confirm-navigate" in layout_str
 
 
@@ -480,13 +485,13 @@ class TestExportStandalone:
     def test_export_script_btn_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-export-script-btn" in layout_str
 
     def test_export_download_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-export-script-download" in layout_str
 
 
@@ -499,7 +504,7 @@ class TestAuthorMetadata:
     def test_save_modal_present(self, tmp_gallery):
         backend = FileSystemBackend(tmp_gallery)
         g = Gallery(backend=backend)
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-save-modal" in layout_str
         assert "gv-save-author" in layout_str
 
@@ -1098,7 +1103,7 @@ class TestIntentCapture:
 
     def test_layout_contains_description_textarea(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-save-description" in layout_str
 
     def test_change_note_facade_returns_value(self, tmp_gallery):
@@ -1214,7 +1219,7 @@ class TestContextRegistration:
 
     def test_layout_contains_context_store(self, tmp_gallery):
         g = Gallery(backend=FileSystemBackend(tmp_gallery), context={"author": "Paul"})
-        layout_str = str(g.app.layout)
+        layout_str = full_layout_str(g)
         assert "gv-context" in layout_str
 
     def test_context_runtime_change_affects_subsequent_saves(self, tmp_gallery):

@@ -130,25 +130,32 @@ feature.
 - **E. Tags:** versions support free-form tags (`published`, `final`, `draft`,
   `wip`, `frozen`, etc.) in frontmatter and UI filtering workflows.
 - **F. Branch-click gallery view:** clicking a tree group opens a card grid
-  in the right panel — direct leaves render as cards (name + description +
+  in the main panel — direct leaves render as cards (name + description +
   glyph), sub-groups render as drillable folder cards (name + recursive
-  leaf count). Clicking a leaf returns to the existing script detail view.
+  leaf count). Clicking a leaf returns to the script detail view.
   Addresses story #8 ("the new collaborator — what's going on?") by making
   the structure of a populated directory legible without forcing the visitor
   to scan the sidebar one item at a time. Real composite thumbnails
   (mosaic of latest leaf PNGs) are deliberately deferred — v1 uses a glyph.
 
-  Three implementation choices worth knowing if you extend this:
+  Implementation notes (post-Pages-migration — see ``PAGES_MIGRATION.md``
+  for the migration history):
 
-  1. **Layout is sidebar (tree) + main panel (panes).** The main panel hosts
-     siblings ``gv-pane-detail`` and ``gv-pane-gallery``; only one is
-     visible at a time. The detail pane wraps the existing editor + preview
-     row (now ``width=5`` / ``width=7`` inside a nested grid that fills
-     the ``width=10`` main col). The gallery pane is full-width within main
-     and is filled by ``render_gallery_panel``. **Adding a new pane** =
-     add a Div with ``id="gv-pane-X"``, add an Output to ``show_pane``,
-     write a content callback that targets ``gv-pane-X``. The tree never
-     references pane ids.
+  1. **Layout is sidebar (tree) + ``dash.page_container`` main panel.** The
+     shell ``_layout`` mounts the sidebar (``width=2``) and a main col
+     (``width=10``) whose only child is ``dash.page_container``. Two pages
+     are registered:
+     - ``pages/detail.py`` (``path="/"``) mounts the editor + preview cluster
+       via ``_gallery._build_detail_layout()``, which returns
+       ``[editor_col(width=5), preview_col(width=7)]``.
+     - ``pages/gallery.py`` (``path_template="/branch/<branch_path>"``) mounts
+       the card grid for that branch via
+       ``_render_gallery_view(tree, decoded, descriptions)``.
+     Page modules expose a ``bind(gallery)`` function that the host calls
+     during ``_build_app`` to attach a ``Gallery`` reference (module-level
+     ``_gallery``) so layouts and page-scoped callbacks can close over it.
+     Auto-discovery is disabled (``pages_folder=""``); pages are imported
+     and bound explicitly.
   2. **Card ids reuse the tree ids.** Leaf cards use
      ``{"type": "gv-nav-item", "index": <name>}`` and subfolder cards use
      ``{"type": "gv-tree-group", "index": <path>}`` — identical to the
@@ -156,14 +163,27 @@ feature.
      and ``toggle_group``) catch card clicks for free, so adding the gallery
      required no new click callbacks. If you change card ids, you also have
      to wire up parallel callbacks.
-  3. **``gv-active-group`` is the single source of truth for pane visibility.**
-     ``show_pane`` reads it and toggles the ``style`` of every pane Div
-     (display: none vs {}). Empty string = detail pane visible; non-empty
-     = gallery pane visible. Each pane owns its own content callbacks and
-     never writes outside its own Div, so there is no cross-pane racing.
-     ``toggle_group`` writes the path on group click; ``nav_click`` clears
-     it on leaf click. The detail pane's components stay mounted (just
-     hidden) so its many callbacks keep working without pane-aware guards.
+  3. **The URL is the source of truth for which page is shown.** ``toggle_group``
+     writes ``_pages_location.pathname = "/branch/<urlencoded path>"`` and
+     ``nav_click`` writes ``_pages_location.pathname = "/"`` plus
+     ``_pages_location.search = "?id=<leaf>"``. CRITICAL: write to
+     **``_pages_location``**, not a custom ``dcc.Location`` — only the
+     internal Location auto-mounted inside ``page_container`` drives the
+     page swap. Sibling Location components do not observe each other's
+     ``pushState`` calls, so a custom id leaves the container stale.
+  4. **Branch path is single-segment.** Dash's ``path_template`` doesn't
+     support Flask's ``<path:...>`` converter (only ``<name>``-style
+     captures). Multi-level branch paths like ``finance/sub`` are URL-encoded
+     before being inserted into the path (``quote(p, safe='')``) and decoded
+     by the page handler (``unquote(branch_path)``).
+  5. **Detail callbacks live on the ``Gallery`` class.** The 22 callbacks
+     registered in ``_register_callbacks`` use ``@app.callback`` (TODO:
+     migrate to ``@dash.callback``) and reference IDs that live in
+     ``_build_detail_layout`` — i.e., on the detail page. They keep firing
+     across page transitions because ``suppress_callback_exceptions=True``
+     allows registered callbacks to reference IDs that aren't currently
+     mounted; when the user navigates back to ``/``, the IDs reappear and
+     the callbacks are live again. No pane-aware guards needed.
 
 ### Still open / documentation follow-up
 - **D. Generic framing:** package is framework-neutral in architecture, but docs
@@ -204,7 +224,7 @@ they go through the backend. A future S3 / cloud backend would slot in here
 without UI changes.
 
 ### Tests
-- `tests/gallery_viewer/` — unit tests, **320 passing** (includes 21 for the
+- `tests/gallery_viewer/` — unit tests, **330 passing** (includes 21 for the
   branch-click gallery view in `test_gallery_view.py`)
 - `tests/integration/` — UI integration tests, **20 total**
   - `test_workflows_ui.py` — 6 tests
