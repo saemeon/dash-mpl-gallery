@@ -1374,7 +1374,7 @@ class TestVersionDiffLabel:
         g = Gallery(backend=FileSystemBackend(tmp_gallery))
         text, color = g.version_diff_label(None, "20240101", "1")
         assert text == "v1 — initial version"
-        assert color == "#777"
+        assert color == "var(--mantine-color-dimmed)"
 
     def test_no_change_returns_grey_label(self, tmp_gallery):
         from gallery_viewer._types import ScriptSections
@@ -1385,7 +1385,7 @@ class TestVersionDiffLabel:
         g = Gallery(backend=backend)
         text, color = g.version_diff_label(None, "20240101", "2")
         assert "no parameter changes from v1" in text
-        assert color == "#777"
+        assert color == "var(--mantine-color-dimmed)"
 
     def test_changed_returns_blue_label(self, tmp_path):
         from gallery_viewer._types import ScriptSections

@@ -28,6 +28,7 @@ from typing import Any
 
 import dash
 import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
 from dash import ALL, Input, Output, State, ctx, dash_table, dcc, html
 
 from gallery_viewer._types import OutputItem, RunResult, ScriptSections
@@ -59,8 +60,18 @@ except ImportError:
 _MONOSPACE = {"fontFamily": "monospace", "fontSize": "13px"}
 _CONSOLE_STYLE = {
     **_MONOSPACE,
-    "backgroundColor": "#1a1a1a",
-    "color": "#d4d4d4",
+    # Theme-aware via CSS light-dark(): the browser picks the matching
+    # value based on the active ``color-scheme`` (which Mantine sets
+    # from the MantineProvider's color scheme).
+    "backgroundColor": (
+        "light-dark(var(--mantine-color-gray-0), "
+        "var(--mantine-color-dark-8))"
+    ),
+    "color": "var(--mantine-color-text)",
+    "border": (
+        "1px solid light-dark(var(--mantine-color-gray-3), "
+        "var(--mantine-color-dark-4))"
+    ),
     "padding": "10px",
     "borderRadius": "4px",
     "minHeight": "80px",
@@ -69,7 +80,7 @@ _CONSOLE_STYLE = {
     "maxHeight": "200px",
 }
 _SECTION_LABEL = {
-    "color": "#888",
+    "color": "var(--mantine-color-dimmed)",
     "fontSize": "11px",
     "textTransform": "uppercase",
     "letterSpacing": "0.06em",
@@ -78,25 +89,27 @@ _SECTION_LABEL = {
 }
 
 
-# Conventional tag colors. Anything not listed falls back to "secondary"
-# (grey). ``frozen`` reads as a warning even though it's purely informational
-# — Save always creates a new version, so there's nothing to enforce.
+# Conventional tag colors (Mantine color names). Anything not listed falls
+# back to "gray". ``frozen`` reads as a warning even though it's purely
+# informational — Save always creates a new version, so there's nothing
+# to enforce.
 _TAG_COLORS = {
-    "published": "success",  # green
-    "final": "primary",  # blue
-    "frozen": "danger",  # red
-    "draft": "secondary",  # grey
-    "wip": "secondary",  # grey
+    "published": "green",
+    "final": "blue",
+    "frozen": "red",
+    "draft": "gray",
+    "wip": "gray",
 }
 
 
 def _tag_badge(tag: str) -> Any:
-    """Render a single tag as a dbc.Badge with conventional color."""
-    return dbc.Badge(
+    """Render a single tag as a dmc.Badge with conventional color."""
+    return dmc.Badge(
         tag,
-        color=_TAG_COLORS.get(tag, "secondary"),
-        pill=True,
-        style={"marginRight": "4px", "fontSize": "10px"},
+        color=_TAG_COLORS.get(tag, "gray"),
+        radius="xl",
+        size="sm",
+        style={"marginRight": "4px"},
     )
 
 
@@ -106,8 +119,8 @@ def _editor_style(height: str = "200px") -> dict:
         "width": "100%",
         "height": height,
         "backgroundColor": "#1e1e1e",
-        "color": "#d4d4d4",
-        "border": "1px solid #444",
+        "color": "var(--mantine-color-text)",
+        "border": "1px solid var(--mantine-color-default-border)",
         "borderRadius": "4px",
         "padding": "10px",
         "resize": "vertical",
@@ -128,6 +141,20 @@ def _make_editor(id: str, height: str = "200px") -> Any:
             enableLiveAutocompletion=False,
         )
     return dcc.Textarea(id=id, style=_editor_style(height))
+
+
+# ---------------------------------------------------------------------------
+# Theme presets
+# ---------------------------------------------------------------------------
+
+# Mapping from preset name → (forceColorScheme, mantine theme dict). The
+# dict is passed verbatim to ``dmc.MantineProvider(theme=...)``; see
+# https://mantine.dev/theming/theme-object/ for the full schema.
+THEMES: dict[str, tuple[str, dict[str, Any]]] = {
+    "dark": ("dark", {"primaryColor": "blue"}),
+    "light": ("light", {"primaryColor": "blue"}),
+    "monokai": ("dark", {"primaryColor": "gray"}),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -167,29 +194,18 @@ def _build_sidebar_tree(names: list[str]) -> dict:
 
 
 def _overview_entry(group_path: str, indent_px: int) -> Any:
-    """Render the per-branch ``Overview`` leaf in the sidebar tree.
+    """Render the per-branch ``Overview`` leaf as a ``dmc.NavLink``.
 
-    Clicking writes ``_pages_location.pathname = "/branch/<group_path>"`` so
-    the gallery page mounts. Empty ``group_path`` is the root overview
-    (gallery for the whole tree). Visually distinguished from script leaves
-    by a folder glyph and lighter typography.
+    Clicking writes ``_pages_location.pathname = "/branch/<group_path>"``
+    so the gallery page mounts. NavLink is auto-themed by the surrounding
+    ``MantineProvider`` (color-scheme reactive).
     """
-    return html.Div(
-        [
-            html.Span("\U0001f4c1", style={"marginRight": "6px"}),
-            html.Span("Overview", style={"fontSize": "12px"}),
-        ],
+    return dmc.NavLink(
         id={"type": "gv-overview", "index": group_path},
+        label="Overview",
+        leftSection=dmc.Text("▣", size="xs", c="dimmed"),
         n_clicks=0,
-        style={
-            "padding": "6px 10px",
-            "paddingLeft": f"{indent_px + 10}px",
-            "marginBottom": "4px",
-            "borderRadius": "4px",
-            "cursor": "pointer",
-            "color": "#cfcfcf",
-            "fontStyle": "italic",
-        },
+        style={"paddingLeft": f"{indent_px + 12}px"},
     )
 
 
@@ -223,27 +239,12 @@ def _render_tree_node(
         is_collapsed = group_path in collapsed
         chevron = "\u25b8" if is_collapsed else "\u25be"
         children.append(
-            html.Div(
-                [
-                    html.Span(
-                        chevron, style={"marginRight": "6px", "fontSize": "10px"}
-                    ),
-                    html.Span(
-                        group.replace("_", " ").title(),
-                        style={"fontSize": "12px", "color": "#aaa"},
-                    ),
-                ],
+            dmc.NavLink(
                 id={"type": "gv-tree-group", "index": group_path},
+                label=group.replace("_", " ").title(),
+                leftSection=dmc.Text(chevron, size="xs", c="dimmed"),
                 n_clicks=0,
-                style={
-                    "padding": "5px 8px",
-                    "paddingLeft": f"{indent + 8}px",
-                    "cursor": "pointer",
-                    "userSelect": "none",
-                    "textTransform": "uppercase",
-                    "letterSpacing": "0.04em",
-                    "marginBottom": "2px",
-                },
+                style={"paddingLeft": f"{indent + 8}px"},
             )
         )
         if not is_collapsed:
@@ -261,36 +262,15 @@ def _render_tree_node(
     # Render leaves
     for name in tree.get("__leaves__", []):
         label = name.rsplit("/", 1)[-1].replace("_", " ").title()
-        desc = descriptions.get(name, "")
         is_active = name == active_plot
         children.append(
-            html.Div(
-                [
-                    html.Div(
-                        label,
-                        style={
-                            "fontWeight": "bold",
-                            "fontSize": "13px",
-                            "color": "#e0e0e0",
-                        },
-                    ),
-                    html.Div(desc, style={"fontSize": "11px", "color": "#888"})
-                    if desc
-                    else None,
-                ],
+            dmc.NavLink(
                 id={"type": "gv-nav-item", "index": name},
+                label=label,
+                leftSection=dmc.Text("·", size="xs", c="dimmed"),
+                active=is_active,
                 n_clicks=0,
-                style={
-                    "padding": "8px 10px",
-                    "paddingLeft": f"{indent + 10}px",
-                    "marginBottom": "4px",
-                    "borderRadius": "4px",
-                    "cursor": "pointer",
-                    "backgroundColor": "#3a3a3a" if is_active else "#2a2a2a",
-                    "borderLeft": "3px solid #5b9bd5"
-                    if is_active
-                    else "3px solid transparent",
-                },
+                style={"paddingLeft": f"{indent + 12}px"},
             )
         )
     return children
@@ -331,8 +311,8 @@ def _count_descendant_leaves(node: dict) -> int:
 
 def _gallery_card_style() -> dict:
     return {
-        "backgroundColor": "#2a2a2a",
-        "border": "1px solid #444",
+        "backgroundColor": "var(--mantine-color-default)",
+        "border": "1px solid var(--mantine-color-default-border)",
         "borderRadius": "6px",
         "padding": "12px",
         "cursor": "pointer",
@@ -355,19 +335,19 @@ def _leaf_card(name: str, description: str) -> Any:
         [
             html.Div(
                 "\U0001f4c4",  # page glyph (placeholder; mosaic thumbs deferred)
-                style={"fontSize": "28px", "color": "#888"},
+                style={"fontSize": "28px", "color": "var(--mantine-color-dimmed)"},
             ),
             html.Div(
                 label,
                 style={
                     "fontWeight": "bold",
                     "fontSize": "13px",
-                    "color": "#e0e0e0",
+                    "color": "var(--mantine-color-text)",
                 },
             ),
             html.Div(
                 description or "",
-                style={"fontSize": "11px", "color": "#888"},
+                style={"fontSize": "11px", "color": "var(--mantine-color-dimmed)"},
             ),
         ],
         id={"type": "gv-nav-item", "index": name},
@@ -392,12 +372,12 @@ def _subfolder_card(group_path: str, leaf_count: int) -> Any:
                 style={
                     "fontWeight": "bold",
                     "fontSize": "13px",
-                    "color": "#e0e0e0",
+                    "color": "var(--mantine-color-text)",
                 },
             ),
             html.Div(
                 f"{leaf_count} item{'s' if leaf_count != 1 else ''}",
-                style={"fontSize": "11px", "color": "#888"},
+                style={"fontSize": "11px", "color": "var(--mantine-color-dimmed)"},
             ),
         ],
         id={"type": "gv-overview", "index": group_path},
@@ -417,7 +397,7 @@ def _render_gallery_view(
     node = _descend_to_group(tree, group_path)
     if node is None:
         return html.Span(
-            f"Group not found: {group_path}", style={"color": "#888"}
+            f"Group not found: {group_path}", style={"color": "var(--mantine-color-dimmed)"}
         )
 
     cards: list = []
@@ -429,7 +409,7 @@ def _render_gallery_view(
         cards.append(_leaf_card(leaf, descriptions.get(leaf, "")))
 
     if not cards:
-        return html.Span("Empty group", style={"color": "#666"})
+        return html.Span("Empty group", style={"color": "var(--mantine-color-dimmed)"})
 
     title = group_path.replace("_", " ").replace("/", " / ").title() or "All"
     return html.Div(
@@ -437,7 +417,7 @@ def _render_gallery_view(
             html.Div(
                 title,
                 style={
-                    "color": "#aaa",
+                    "color": "var(--mantine-color-dimmed)",
                     "fontSize": "12px",
                     "textTransform": "uppercase",
                     "letterSpacing": "0.06em",
@@ -480,7 +460,9 @@ class Gallery:
     title :
         Dashboard title shown in the header.
     theme :
-        A ``dbc.themes`` constant.  Defaults to ``SLATE`` (dark).
+        Visual theme preset. One of ``"dark"`` (default; dark + blue
+        accent), ``"light"`` (light + blue accent), ``"monokai"`` (dark +
+        gray accent). See ``THEMES`` for the full mapping.
     export_fn :
         Optional ``(bytes) -> bytes`` that post-processes a plot image.
     extra_controls :
@@ -492,7 +474,7 @@ class Gallery:
         backend: StorageBackend | None = None,
         backends: dict[str, StorageBackend] | None = None,
         title: str = "Gallery Viewer",
-        theme: Any = None,
+        theme: str = "dark",
         export_fn: Callable[[bytes], bytes] | None = None,
         extra_controls: Any = None,
         config_path: str | Path | None = None,
@@ -514,7 +496,11 @@ class Gallery:
 
         self.title = title
         self._config_path = Path(config_path) if config_path else None
-        self.theme = theme or dbc.themes.SLATE
+        if theme not in THEMES:
+            raise ValueError(
+                f"Unknown theme {theme!r}. Available: {sorted(THEMES)}"
+            )
+        self.theme = theme
         self.export_fn = export_fn
         self.extra_controls = extra_controls
 
@@ -611,7 +597,7 @@ class Gallery:
     def _build_app(self) -> dash.Dash:
         app = dash.Dash(
             __name__,
-            external_stylesheets=[self.theme],
+            external_stylesheets=[],
             title=self.title,
             use_pages=True,
             pages_folder="",
@@ -670,13 +656,13 @@ class Gallery:
         export_btn = []
         if self.export_fn is not None:
             export_btn = [
-                dbc.Button(
+                dmc.Button(
                     "Export",
                     id="export-btn",
-                    color="warning",
+                    color="yellow",
                     size="sm",
                     n_clicks=0,
-                    style={"marginLeft": "8px"},
+                    ml="sm",
                 ),
                 dcc.Download(id="export-download"),
             ]
@@ -684,150 +670,93 @@ class Gallery:
         return [
             # ── EDITOR ────────────────────────────────────────
             # Width 5/12 inside the page_container's own grid (page sits in
-            # the width=10 main col). 5+7 fills the inner row; preserves
+            # the span=10 main col). 5+7 fills the inner row; preserves
             # the original 4:6 visual ratio closely.
-            dbc.Col(
-                width=5,
+            dmc.GridCol(
+                span=5,
                 children=[
-                    dbc.Row(
+                    dmc.Grid(
                         [
-                            dbc.Col(
-                                width=5,
+                            dmc.GridCol(
+                                span=5,
                                 children=[
-                                    html.Label(
-                                        self.group_label,
-                                        style={
-                                            "color": "#aaa",
-                                            "fontSize": "12px",
-                                        },
-                                    ),
-                                    dcc.Dropdown(
+                                    dmc.Text(self.group_label, size="xs", c="dimmed", mb=4),
+                                    dmc.Select(
                                         id="gv-group",
                                         placeholder=f"Select {self.group_label.lower()}...",
                                         clearable=False,
-                                        style={"marginBottom": "6px"},
+                                        size="sm",
+                                        mb="xs",
                                     ),
                                 ],
                             ),
-                            dbc.Col(
-                                width=5,
+                            dmc.GridCol(
+                                span=5,
                                 children=[
-                                    html.Label(
-                                        self.version_label,
-                                        style={
-                                            "color": "#aaa",
-                                            "fontSize": "12px",
-                                        },
-                                    ),
-                                    dcc.Dropdown(
+                                    dmc.Text(self.version_label, size="xs", c="dimmed", mb=4),
+                                    dmc.Select(
                                         id="gv-version",
                                         clearable=False,
-                                        style={"marginBottom": "6px"},
+                                        size="sm",
+                                        mb="xs",
                                     ),
                                 ],
                             ),
-                            dbc.Col(
-                                width=1,
+                            dmc.GridCol(
+                                span=1,
                                 children=[
-                                    html.Label(
-                                        "\u00a0", style={"fontSize": "12px"}
-                                    ),
-                                    dbc.Button(
+                                    dmc.Text("\u00a0", size="xs", mb=4),
+                                    dmc.ActionIcon(
                                         "\u21bb",
                                         id="gv-refresh-btn",
-                                        color="secondary",
-                                        size="sm",
+                                        variant="default",
+                                        size="lg",
                                         n_clicks=0,
-                                        style={
-                                            "width": "100%",
-                                            "fontSize": "16px",
-                                            "padding": "4px",
-                                        },
-                                        title=(
-                                            f"Refresh {self.group_label.lower()}s "
-                                            f"& {self.version_label.lower()}s"
-                                        ),
+                                        **{"aria-label": "Refresh"},
                                     ),
                                 ],
                             ),
-                            dbc.Col(
-                                width=1,
+                            dmc.GridCol(
+                                span=1,
                                 children=[
-                                    html.Label(
-                                        "\u00a0", style={"fontSize": "12px"}
-                                    ),
-                                    dbc.Button(
+                                    dmc.Text("\u00a0", size="xs", mb=4),
+                                    dmc.ActionIcon(
                                         "+",
                                         id="gv-new-group-btn",
-                                        color="secondary",
-                                        size="sm",
+                                        variant="default",
+                                        size="lg",
                                         n_clicks=0,
-                                        style={
-                                            "width": "100%",
-                                            "fontSize": "16px",
-                                            "padding": "4px",
-                                        },
-                                        title=(
-                                            f"Start new {self.group_label.lower()} "
-                                            "from uncharted data"
-                                        ),
+                                        **{"aria-label": "New group from uncharted data"},
                                     ),
                                 ],
                             ),
                         ]
                     ),
-                    dbc.Row(
+                    dmc.Grid(
                         [
-                            dbc.Col(
-                                width=5,
+                            dmc.GridCol(
+                                span=5,
                                 children=[
-                                    html.Label(
-                                        "Filter",
-                                        style={
-                                            "color": "#aaa",
-                                            "fontSize": "12px",
-                                        },
-                                    ),
-                                    dcc.Dropdown(
+                                    dmc.Text("Filter", size="xs", c="dimmed", mb=4),
+                                    dmc.Select(
                                         id="gv-tag-filter",
                                         placeholder="All versions",
                                         clearable=True,
-                                        style={"marginBottom": "6px"},
-                                    ),
-                                ],
-                            ),
-                            dbc.Col(
-                                width=5,
-                                children=[
-                                    html.Label(
-                                        "Tags",
-                                        style={
-                                            "color": "#aaa",
-                                            "fontSize": "12px",
-                                        },
-                                    ),
-                                    html.Div(
-                                        id="gv-tags-row",
-                                        style={
-                                            "marginBottom": "6px",
-                                            "minHeight": "24px",
-                                        },
-                                    ),
-                                ],
-                            ),
-                            dbc.Col(
-                                width=2,
-                                children=[
-                                    html.Label(
-                                        " ", style={"fontSize": "12px"}
-                                    ),
-                                    dbc.Button(
-                                        "Edit",
-                                        id="gv-edit-tags-btn",
-                                        color="secondary",
                                         size="sm",
-                                        n_clicks=0,
-                                        style={"width": "100%"},
+                                        mb="xs",
+                                    ),
+                                ],
+                            ),
+                            dmc.GridCol(
+                                span=7,
+                                children=[
+                                    dmc.TagsInput(
+                                        id="gv-tags-input",
+                                        label="Tags",
+                                        placeholder="Add a tag and press Enter",
+                                        value=[],
+                                        clearable=True,
+                                        size="sm",
                                     ),
                                 ],
                             ),
@@ -860,10 +789,10 @@ class Gallery:
                                     "marginTop": "0",
                                 },
                             ),
-                            dbc.Switch(
+                            dmc.Switch(
                                 id="gv-show-script",
-                                label="",
-                                value=False,
+                                checked=False,
+                                size="sm",
                                 style={
                                     "display": "inline-block",
                                     "marginLeft": "8px",
@@ -882,192 +811,119 @@ class Gallery:
                         id="gv-editor-wrapper",
                         style={"display": "none"},
                     ),
-                    dbc.Row(
+                    dmc.Grid(
                         [
-                            dbc.Col(
-                                dbc.Button(
-                                    [
-                                        dbc.Spinner(
-                                            size="sm",
-                                            spinner_style={
-                                                "marginRight": "6px"
-                                            },
-                                            id="gv-run-spinner",
-                                        ),
-                                        "RUN",
-                                    ],
+                            dmc.GridCol(
+                                dmc.Button(
+                                    "RUN",
                                     id="gv-run-btn",
-                                    color="success",
+                                    color="green",
                                     size="sm",
                                     n_clicks=0,
-                                    style={"width": "100%"},
+                                    fullWidth=True,
+                                    leftSection=dmc.Loader(
+                                        size="xs", id="gv-run-spinner"
+                                    ),
                                 ),
-                                width=3,
+                                span=3,
                             ),
-                            dbc.Col(
-                                dbc.Button(
+                            dmc.GridCol(
+                                dmc.Button(
                                     "Update Script",
                                     id="gv-update-script-btn",
-                                    color="secondary",
+                                    variant="default",
                                     size="sm",
                                     n_clicks=0,
-                                    style={"width": "100%"},
-                                    title="Write current parameter values into the script",
+                                    fullWidth=True,
                                 ),
-                                width=3,
+                                span=3,
                             ),
-                            dbc.Col(
-                                dbc.Button(
+                            dmc.GridCol(
+                                dmc.Button(
                                     "Save Version",
                                     id="gv-save-btn",
-                                    color="primary",
+                                    color="blue",
                                     size="sm",
                                     n_clicks=0,
-                                    style={"width": "100%"},
+                                    fullWidth=True,
                                 ),
-                                width=3,
+                                span=3,
                             ),
-                            dbc.Col(
-                                dbc.Button(
+                            dmc.GridCol(
+                                dmc.Button(
                                     "Export .py",
                                     id="gv-export-script-btn",
-                                    color="info",
+                                    color="cyan",
+                                    variant="outline",
                                     size="sm",
                                     n_clicks=0,
-                                    outline=True,
-                                    style={"width": "100%"},
-                                    title="Download as standalone Python script",
+                                    fullWidth=True,
                                 ),
-                                width=3,
+                                span=3,
                             ),
                         ],
                         style={"marginTop": "8px", "marginBottom": "6px"},
                     ),
-                    html.Label(
-                        "Console",
-                        style={"color": "#aaa", "fontSize": "12px"},
-                    ),
+                    dmc.Text("Console", size="xs", c="dimmed", mb=4),
                     html.Div(id="gv-console", style=_CONSOLE_STYLE),
-                    dbc.Modal(
-                        [
-                            dbc.ModalHeader("Save New Version"),
-                            dbc.ModalBody(
-                                [
-                                    html.P(
-                                        "The script and plot will be saved to disk.",
-                                        style={"marginBottom": "8px"},
-                                    ),
-                                    dbc.Label(
-                                        "Author (optional)",
-                                        style={"fontSize": "12px"},
-                                    ),
-                                    dbc.Input(
-                                        id="gv-save-author",
-                                        type="text",
-                                        placeholder="e.g. Alice",
-                                        size="sm",
-                                    ),
-                                    dbc.Label(
-                                        "What changed? (optional)",
-                                        style={
-                                            "fontSize": "12px",
-                                            "marginTop": "8px",
-                                        },
-                                    ),
-                                    dbc.Textarea(
-                                        id="gv-save-description",
-                                        placeholder=(
-                                            "Why this version exists — "
-                                            "e.g. switched to log scale "
-                                            "because small categories "
-                                            "were buried."
-                                        ),
-                                        rows=3,
-                                        style={"fontSize": "12px"},
-                                    ),
-                                ]
+                    dmc.Modal(
+                        id="gv-save-modal",
+                        title="Save New Version",
+                        opened=False,
+                        size="md",
+                        children=[
+                            dmc.Text(
+                                "The script and plot will be saved to disk.",
+                                size="sm",
+                                mb="sm",
                             ),
-                            dbc.ModalFooter(
+                            dmc.TextInput(
+                                id="gv-save-author",
+                                label="Author (optional)",
+                                placeholder="e.g. Alice",
+                                size="sm",
+                            ),
+                            dmc.Textarea(
+                                id="gv-save-description",
+                                label="What changed? (optional)",
+                                placeholder=(
+                                    "Why this version exists — "
+                                    "e.g. switched to log scale because "
+                                    "small categories were buried."
+                                ),
+                                minRows=3,
+                                autosize=True,
+                                mt="sm",
+                            ),
+                            dmc.Group(
                                 [
-                                    dbc.Button(
-                                        "Save",
-                                        id="gv-confirm-save-ok",
-                                        color="primary",
-                                        size="sm",
-                                    ),
-                                    dbc.Button(
+                                    dmc.Button(
                                         "Cancel",
                                         id="gv-confirm-save-cancel",
-                                        color="secondary",
+                                        variant="default",
                                         size="sm",
                                     ),
-                                ]
-                            ),
-                        ],
-                        id="gv-save-modal",
-                        is_open=False,
-                    ),
-                    dbc.Modal(
-                        [
-                            dbc.ModalHeader("Edit Tags"),
-                            dbc.ModalBody(
-                                [
-                                    html.P(
-                                        "Add or remove tags for this version.",
-                                        style={"marginBottom": "8px"},
-                                    ),
-                                    html.Div(
-                                        id="gv-edit-tags-current",
-                                        style={"marginBottom": "12px"},
-                                    ),
-                                    dbc.Label(
-                                        "Add tag",
-                                        style={"fontSize": "12px"},
-                                    ),
-                                    dbc.InputGroup(
-                                        [
-                                            dbc.Input(
-                                                id="gv-new-tag-input",
-                                                type="text",
-                                                placeholder="e.g. published, final",
-                                                size="sm",
-                                            ),
-                                            dbc.Button(
-                                                "+",
-                                                id="gv-add-tag-btn",
-                                                color="primary",
-                                                size="sm",
-                                            ),
-                                        ]
-                                    ),
-                                ]
-                            ),
-                            dbc.ModalFooter(
-                                [
-                                    dbc.Button(
-                                        "Done",
-                                        id="gv-edit-tags-done",
-                                        color="primary",
+                                    dmc.Button(
+                                        "Save",
+                                        id="gv-confirm-save-ok",
+                                        color="blue",
                                         size="sm",
                                     ),
-                                ]
+                                ],
+                                justify="flex-end",
+                                mt="md",
                             ),
                         ],
-                        id="gv-edit-tags-modal",
-                        is_open=False,
                     ),
                 ],
             ),
             # ── PREVIEW ───────────────────────────────────────
-            dbc.Col(
-                width=7,
+            dmc.GridCol(
+                span=7,
                 children=[
                     html.Div(
                         [
-                            html.Label(
-                                "Output",
-                                style={"color": "#aaa", "fontSize": "12px"},
-                            ),
+                            dmc.Text("Output", size="xs", c="dimmed", mb=4),
                             *export_btn,
                         ],
                         style={
@@ -1078,11 +934,11 @@ class Gallery:
                     ),
                     dcc.Loading(
                         type="circle",
-                        color="#aaa",
+                        color="var(--mantine-color-dimmed)",
                         children=html.Div(
                             id="gv-output-panel",
                             style={
-                                "backgroundColor": "#2a2a2a",
+                                "backgroundColor": "var(--mantine-color-default)",
                                 "borderRadius": "4px",
                                 "padding": "8px",
                                 "minHeight": "300px",
@@ -1094,10 +950,7 @@ class Gallery:
                             children=_no_plot(),
                         ),
                     ),
-                    html.Label(
-                        "Data (first 50 rows)",
-                        style={"color": "#aaa", "fontSize": "12px"},
-                    ),
+                    dmc.Text("Data (first 50 rows)", size="xs", c="dimmed", mb=4),
                     html.Div(
                         id="gv-data-panel",
                         style={
@@ -1111,108 +964,127 @@ class Gallery:
             ),
         ]
 
-    def _layout(self) -> dbc.Container:
-        extra = self.extra_controls or html.Div()
+    def _layout(self) -> dmc.MantineProvider:
         item_ids = list(self.backends.keys())
-
-        export_btn = []
-        if self.export_fn is not None:
-            export_btn = [
-                dbc.Button(
-                    "Export",
-                    id="export-btn",
-                    color="warning",
-                    size="sm",
-                    n_clicks=0,
-                    style={"marginLeft": "8px"},
-                ),
-                dcc.Download(id="export-download"),
-            ]
 
         # "Add <item>" button (only when config file is used)
         add_plot_btn = []
         if self._config_path:
             add_plot_btn = [
-                dbc.Button(
+                dmc.Button(
                     f"+ Add {self.item_label}",
                     id="gv-add-plot-btn",
-                    color="secondary",
+                    variant="default",
                     size="sm",
                     n_clicks=0,
-                    style={"width": "100%", "marginTop": "8px", "marginBottom": "8px"},
+                    fullWidth=True,
+                    mt="sm",
+                    mb="sm",
                 ),
-                dbc.Modal(
-                    [
-                        dbc.ModalHeader(f"Add New {self.item_label}"),
-                        dbc.ModalBody(
-                            [
-                                dbc.Label(f"{self.item_label} name"),
-                                dbc.Input(
-                                    id="gv-add-plot-name",
-                                    type="text",
-                                    placeholder="e.g. revenue_chart",
-                                ),
-                                dbc.Label("Description", class_name="mt-2"),
-                                dbc.Input(
-                                    id="gv-add-plot-desc",
-                                    type="text",
-                                    placeholder="Optional description",
-                                ),
-                            ]
+                dmc.Modal(
+                    id="gv-add-plot-modal",
+                    title=f"Add New {self.item_label}",
+                    opened=False,
+                    size="md",
+                    children=[
+                        dmc.TextInput(
+                            id="gv-add-plot-name",
+                            label=f"{self.item_label} name",
+                            placeholder="e.g. revenue_chart",
                         ),
-                        dbc.ModalFooter(
+                        dmc.TextInput(
+                            id="gv-add-plot-desc",
+                            label="Description",
+                            placeholder="Optional description",
+                            mt="sm",
+                        ),
+                        dmc.Group(
                             [
-                                dbc.Button(
-                                    "Create",
-                                    id="gv-add-plot-submit",
-                                    color="primary",
-                                    size="sm",
-                                ),
-                                dbc.Button(
+                                dmc.Button(
                                     "Cancel",
                                     id="gv-add-plot-cancel",
-                                    color="secondary",
+                                    variant="default",
                                     size="sm",
                                 ),
-                            ]
+                                dmc.Button(
+                                    "Create",
+                                    id="gv-add-plot-submit",
+                                    color="blue",
+                                    size="sm",
+                                ),
+                            ],
+                            justify="flex-end",
+                            mt="md",
                         ),
                     ],
-                    id="gv-add-plot-modal",
-                    is_open=False,
                 ),
                 html.Div(
                     id="gv-add-plot-feedback",
-                    style={"fontSize": "12px", "color": "#aaa"},
+                    style={"fontSize": "12px", "color": "var(--mantine-color-dimmed)"},
                 ),
             ]
 
-        return dbc.Container(
+        color_scheme, theme_dict = THEMES[self.theme]
+        return dmc.MantineProvider(
+            id="gv-mantine-provider",
+            forceColorScheme=color_scheme,
+            theme=theme_dict,
+            children=dmc.Container(
             fluid=True,
             style={"padding": "16px"},
             children=[
-                dbc.Row(
-                    dbc.Col(
-                        html.H3(
-                            self.title,
-                            style={"color": "#e0e0e0", "marginBottom": "12px"},
+                dmc.Grid(
+                    dmc.GridCol(
+                        html.Div(
+                            [
+                                dmc.Title(
+                                    self.title,
+                                    order=3,
+                                    style={"marginBottom": 0},
+                                ),
+                                dmc.Select(
+                                    id="gv-theme-select",
+                                    data=[
+                                        {"value": k, "label": k.title()}
+                                        for k in THEMES
+                                    ],
+                                    value=self.theme,
+                                    size="xs",
+                                    clearable=False,
+                                    allowDeselect=False,
+                                    style={"width": "110px"},
+                                ),
+                            ],
+                            style={
+                                "display": "flex",
+                                "justifyContent": "space-between",
+                                "alignItems": "center",
+                                "marginBottom": "12px",
+                            },
                         ),
                     )
                 ),
-                dbc.Row(
+                # Persists the user's theme choice across sessions; the
+                # apply_theme callback rebroadcasts it onto the
+                # MantineProvider on every page load.
+                dcc.Store(
+                    id="gv-theme-store",
+                    storage_type="local",
+                    data=self.theme,
+                ),
+                dmc.Grid(
                     [
                         # ── GALLERY SIDEBAR ───────────────────────────────
-                        dbc.Col(
-                            width=2,
+                        dmc.GridCol(
+                            span=2,
                             children=[
-                                html.Label(
+                                dmc.Text(
                                     f"{self.item_label}s",
-                                    style={
-                                        "color": "#aaa",
-                                        "fontSize": "12px",
-                                        "textTransform": "uppercase",
-                                        "letterSpacing": "0.06em",
-                                        "marginBottom": "8px",
-                                    },
+                                    size="xs",
+                                    c="dimmed",
+                                    tt="uppercase",
+                                    style={"letterSpacing": "0.06em"},
+                                    mb="sm",
                                 ),
                                 dcc.Input(
                                     id="gv-search",
@@ -1222,9 +1094,9 @@ class Gallery:
                                     style={
                                         "width": "100%",
                                         "marginBottom": "8px",
-                                        "backgroundColor": "#3a3a3a",
-                                        "color": "#d4d4d4",
-                                        "border": "1px solid #555",
+                                        "backgroundColor": "var(--mantine-color-default-hover)",
+                                        "color": "var(--mantine-color-text)",
+                                        "border": "1px solid var(--mantine-color-default-border)",
                                         "borderRadius": "4px",
                                         "padding": "4px 8px",
                                         "fontSize": "12px",
@@ -1251,7 +1123,7 @@ class Gallery:
                         # Main panel — Dash Pages mounts the active page
                         # here. ``/`` mounts the detail editor+preview;
                         # ``/branch/<x>`` mounts the gallery card grid.
-                        dbc.Col(width=10, children=[dash.page_container]),
+                        dmc.GridCol(span=10, children=[dash.page_container]),
                     ]
                 ),
                 dcc.Store(id="gv-plot-bytes-store"),
@@ -1290,6 +1162,7 @@ class Gallery:
                 # Export standalone script
                 dcc.Download(id="gv-export-script-download"),
             ],
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -1524,17 +1397,17 @@ class Gallery:
         the color hint as styling.
 
         Returns:
-            * ``("v1 — initial version", "#777")`` for v1
-            * ``("v{n} — no parameter changes from v{n-1}", "#777")`` for unchanged
+            * ``("v1 — initial version", "var(--mantine-color-dimmed)")`` for v1
+            * ``("v{n} — no parameter changes from v{n-1}", "var(--mantine-color-dimmed)")`` for unchanged
             * ``("v{n} — <comma-joined diff>", "#8cb4d5")`` for changed
         """
         version = str(version)
         if version == "1":
-            return ("v1 — initial version", "#777")
+            return ("v1 — initial version", "var(--mantine-color-dimmed)")
         prev_version = str(int(version) - 1)
         diff = self.version_diff(item_id, group, version)
         if not diff:
-            return (f"v{version} — no parameter changes from v{prev_version}", "#777")
+            return (f"v{version} — no parameter changes from v{prev_version}", "var(--mantine-color-dimmed)")
         return (f"v{version} — " + ", ".join(diff), "#8cb4d5")
 
     def change_note(self, item_id: str | None, group: str, version: str) -> str | None:
@@ -1614,6 +1487,31 @@ class Gallery:
     # ------------------------------------------------------------------
 
     def _register_callbacks(self) -> None:
+        # -- Theme: persist the user's choice and apply it to the provider --
+        # Two callbacks: the select pushes to local-storage; the storage
+        # rebroadcasts to the MantineProvider props. Splitting them lets
+        # the provider apply the persisted theme on every reload (the
+        # store's initial-call fires apply_theme without user interaction).
+        @dash.callback(
+            Output("gv-theme-store", "data"),
+            Input("gv-theme-select", "value"),
+            prevent_initial_call=True,
+        )
+        def save_theme_choice(theme: str) -> str:
+            return theme if theme in THEMES else dash.no_update
+
+        @dash.callback(
+            Output("gv-mantine-provider", "forceColorScheme"),
+            Output("gv-mantine-provider", "theme"),
+            Output("gv-theme-select", "value"),
+            Input("gv-theme-store", "data"),
+        )
+        def apply_theme(theme: str | None) -> tuple[str, dict, str]:
+            if theme not in THEMES:
+                theme = "dark"
+            color_scheme, theme_dict = THEMES[theme]
+            return color_scheme, theme_dict, theme
+
         # -- Render sidebar nav list (tree-aware) --
         @dash.callback(
             Output("gv-gallery-sidebar", "children"),
@@ -1628,7 +1526,7 @@ class Gallery:
                 q = search.lower()
                 names = [n for n in names if q in n.lower()]
             if not names:
-                return html.Span("No plots", style={"color": "#666"})
+                return html.Span("No plots", style={"color": "var(--mantine-color-dimmed)"})
             # Build description lookup
             descriptions: dict[str, str] = {}
             if self._config_path:
@@ -1718,7 +1616,7 @@ class Gallery:
         # detail-page remount after a branch detour lands the user back on
         # the group they were editing (not the newest one).
         @dash.callback(
-            Output("gv-group", "options", allow_duplicate=True),
+            Output("gv-group", "data", allow_duplicate=True),
             Output("gv-group", "value", allow_duplicate=True),
             Input("gv-plot-select", "data"),
             State("gv-edit-buffer", "data"),
@@ -1740,9 +1638,9 @@ class Gallery:
 
         # -- Refresh button → reload groups + versions for current plot --
         @dash.callback(
-            Output("gv-group", "options", allow_duplicate=True),
+            Output("gv-group", "data", allow_duplicate=True),
             Output("gv-group", "value", allow_duplicate=True),
-            Output("gv-version", "options", allow_duplicate=True),
+            Output("gv-version", "data", allow_duplicate=True),
             Output("gv-version", "value", allow_duplicate=True),
             Input("gv-refresh-btn", "n_clicks"),
             State("gv-plot-select", "data"),
@@ -1767,7 +1665,7 @@ class Gallery:
         # (leaf, group), so detail-page remount lands on the version the
         # user was editing rather than the latest.
         @dash.callback(
-            Output("gv-version", "options"),
+            Output("gv-version", "data"),
             Output("gv-version", "value", allow_duplicate=True),
             Input("gv-group", "value"),
             State("gv-plot-select", "data"),
@@ -1909,120 +1807,52 @@ class Gallery:
             )
             return console or "(no output)", _render_outputs(result.items), b64
 
-        # -- TAGS: update tag row when version changes --
+        # -- TAGS: load tags into the input when (item, group, version) changes --
+        # Also refreshes the tag-filter dropdown's options to reflect any
+        # tags that exist anywhere in the current group.
         @dash.callback(
-            Output("gv-tags-row", "children"),
-            Output("gv-tag-filter", "options"),
+            Output("gv-tags-input", "value"),
+            Output("gv-tag-filter", "data"),
             Input("gv-version", "value"),
             State("gv-group", "value"),
             State("gv-plot-select", "data"),
         )
-        def update_tags_row(version, group, item_id):
+        def load_tags(version, group, item_id):
             if not group or not version:
                 return [], []
             tags = self.list_tags(item_id, group, version)
             all_tags = self.all_tags(item_id, group)
-            tag_badges = [_tag_badge(t) for t in tags]
-            tag_options = [{"label": t, "value": t} for t in all_tags]
-            return tag_badges, tag_options
+            return tags, [{"label": t, "value": t} for t in all_tags]
 
-        # -- TAGS: toggle edit modal --
+        # -- TAGS: persist edits in the input back to the backend --
+        # Diffs the input's value against the backend on every change and
+        # adds/removes accordingly. Refreshes the tag-filter so newly
+        # created tags become filterable immediately.
         @dash.callback(
-            Output("gv-edit-tags-modal", "is_open"),
-            Output("gv-edit-tags-current", "children"),
-            Input("gv-edit-tags-btn", "n_clicks"),
-            Input("gv-edit-tags-done", "n_clicks"),
-            State("gv-edit-tags-modal", "is_open"),
-            State("gv-group", "value"),
-            State("gv-version", "value"),
-            State("gv-plot-select", "data"),
-        )
-        def toggle_edit_tags_modal(n_edit, n_done, is_open, group, version, item_id):
-            trigger = ctx.triggered_id
-            if trigger == "gv-edit-tags-btn" and not is_open:
-                if group and version:
-                    tags = self.list_tags(item_id, group, version)
-                    tag_list = [
-                        dbc.Badge(
-                            [
-                                t,
-                                html.Span(
-                                    " ×",
-                                    id={"type": "gv-tag-remove", "index": t},
-                                    style={"marginLeft": "4px", "cursor": "pointer"},
-                                    n_clicks=0,
-                                ),
-                            ],
-                            color=_TAG_COLORS.get(t, "secondary"),
-                            pill=True,
-                            style={"marginRight": "4px", "marginBottom": "4px"},
-                        )
-                        for t in tags
-                    ]
-                    return True, tag_list
-            if trigger == "gv-edit-tags-done":
-                return False, dash.no_update
-            return dash.no_update, dash.no_update
-
-        # -- TAGS: add/remove tags via modal --
-        @dash.callback(
-            Output("gv-new-tag-input", "value"),
-            Output("gv-edit-tags-current", "children"),
-            Output("gv-tags-row", "children", allow_duplicate=True),
-            Output("gv-tag-filter", "options", allow_duplicate=True),
-            Input("gv-add-tag-btn", "n_clicks"),
-            Input({"type": "gv-tag-remove", "index": ALL}, "n_clicks"),
-            State("gv-new-tag-input", "value"),
+            Output("gv-tag-filter", "data", allow_duplicate=True),
+            Input("gv-tags-input", "value"),
             State("gv-group", "value"),
             State("gv-version", "value"),
             State("gv-plot-select", "data"),
             prevent_initial_call=True,
         )
-        def manage_tags(add_clicks, remove_clicks, new_tag, group, version, item_id):
+        def save_tags(new_tags, group, version, item_id):
             if not group or not version:
-                return "", dash.no_update, dash.no_update, dash.no_update
-            trigger = ctx.triggered_id
-            if trigger == "gv-add-tag-btn" and new_tag:
-                self.add_tag(item_id, group, version, new_tag.strip())
-            elif isinstance(trigger, dict) and trigger.get("type") == "gv-tag-remove":
-                # Avoid spurious removes when n_clicks=0 (initial render).
-                if not any(remove_clicks):
-                    return (
-                        dash.no_update,
-                        dash.no_update,
-                        dash.no_update,
-                        dash.no_update,
-                    )
-                tag_to_remove = trigger["index"]
-                self.remove_tag(item_id, group, version, tag_to_remove)
-            else:
-                return dash.no_update, dash.no_update, dash.no_update, dash.no_update
-            tags = self.list_tags(item_id, group, version)
-            all_tags = self.all_tags(item_id, group)
-            tag_list = [
-                dbc.Badge(
-                    [
-                        t,
-                        html.Span(
-                            " ×",
-                            id={"type": "gv-tag-remove", "index": t},
-                            style={"marginLeft": "4px", "cursor": "pointer"},
-                            n_clicks=0,
-                        ),
-                    ],
-                    color=_TAG_COLORS.get(t, "secondary"),
-                    pill=True,
-                    style={"marginRight": "4px", "marginBottom": "4px"},
-                )
-                for t in tags
+                return dash.no_update
+            new_set = {t.strip() for t in (new_tags or []) if t and t.strip()}
+            current = set(self.list_tags(item_id, group, version))
+            for t in new_set - current:
+                self.add_tag(item_id, group, version, t)
+            for t in current - new_set:
+                self.remove_tag(item_id, group, version, t)
+            return [
+                {"label": t, "value": t}
+                for t in self.all_tags(item_id, group)
             ]
-            badges = [_tag_badge(t) for t in tags]
-            filter_options = [{"label": t, "value": t} for t in all_tags]
-            return "", tag_list, badges, filter_options
 
         # -- TAGS: filter version dropdown by tag --
         @dash.callback(
-            Output("gv-version", "options"),
+            Output("gv-version", "data"),
             Output("gv-version", "value"),
             Input("gv-tag-filter", "value"),
             State("gv-group", "value"),
@@ -2050,11 +1880,11 @@ class Gallery:
 
         # -- SAVE: step 1 — open modal --
         @dash.callback(
-            Output("gv-save-modal", "is_open"),
+            Output("gv-save-modal", "opened"),
             Input("gv-save-btn", "n_clicks"),
             Input("gv-confirm-save-ok", "n_clicks"),
             Input("gv-confirm-save-cancel", "n_clicks"),
-            State("gv-save-modal", "is_open"),
+            State("gv-save-modal", "opened"),
             prevent_initial_call=True,
         )
         def toggle_save_modal(n_save, n_ok, n_cancel, is_open):
@@ -2068,7 +1898,7 @@ class Gallery:
         # The user can still override before submitting.
         @dash.callback(
             Output("gv-save-author", "value"),
-            Input("gv-save-modal", "is_open"),
+            Input("gv-save-modal", "opened"),
             State("gv-context", "data"),
             prevent_initial_call=True,
         )
@@ -2084,9 +1914,9 @@ class Gallery:
             Output("gv-console", "children", allow_duplicate=True),
             Output("gv-output-panel", "children", allow_duplicate=True),
             Output("gv-gallery-items", "data", allow_duplicate=True),
-            Output("gv-group", "options", allow_duplicate=True),
+            Output("gv-group", "data", allow_duplicate=True),
             Output("gv-group", "value", allow_duplicate=True),
-            Output("gv-version", "options", allow_duplicate=True),
+            Output("gv-version", "data", allow_duplicate=True),
             Output("gv-version", "value", allow_duplicate=True),
             Output("gv-editor-script", "value", allow_duplicate=True),
             Output("gv-clean-script-store", "data", allow_duplicate=True),
@@ -2175,14 +2005,14 @@ class Gallery:
                 return html.Div(
                     "Use form fields above to tweak parameters, "
                     "then RUN to preview or Save Version to persist.",
-                    style={"fontSize": "11px", "color": "#777", "marginTop": "2px"},
+                    style={"fontSize": "11px", "color": "var(--mantine-color-dimmed)", "marginTop": "2px"},
                 )
             return None
 
         # -- Feature 1: Toggle script editor visibility --
         @dash.callback(
             Output("gv-editor-wrapper", "style"),
-            Input("gv-show-script", "value"),
+            Input("gv-show-script", "checked"),
         )
         def toggle_editor(show):
             if show:
@@ -2208,7 +2038,7 @@ class Gallery:
                 children.append(
                     html.Div(
                         f"by {author}",
-                        style={"color": "#666", "fontStyle": "italic"},
+                        style={"color": "var(--mantine-color-dimmed)", "fontStyle": "italic"},
                     )
                 )
             # Change note — rendered as a quote-style block on a second line so
@@ -2221,7 +2051,7 @@ class Gallery:
                         f"“{note}”",
                         title=note,
                         style={
-                            "color": "#bbb",
+                            "color": "var(--mantine-color-dimmed)",
                             "fontStyle": "italic",
                             "whiteSpace": "nowrap",
                             "overflow": "hidden",
@@ -2234,9 +2064,9 @@ class Gallery:
 
         # -- Feature 3: New Date button (detect uncharted data) --
         @dash.callback(
-            Output("gv-group", "options", allow_duplicate=True),
+            Output("gv-group", "data", allow_duplicate=True),
             Output("gv-group", "value", allow_duplicate=True),
-            Output("gv-version", "options", allow_duplicate=True),
+            Output("gv-version", "data", allow_duplicate=True),
             Output("gv-version", "value", allow_duplicate=True),
             Output("gv-editor-script", "value", allow_duplicate=True),
             Output("gv-param-fields", "children", allow_duplicate=True),
@@ -2330,11 +2160,11 @@ class Gallery:
         if self._config_path:
 
             @dash.callback(
-                Output("gv-add-plot-modal", "is_open"),
+                Output("gv-add-plot-modal", "opened"),
                 Input("gv-add-plot-btn", "n_clicks"),
                 Input("gv-add-plot-cancel", "n_clicks"),
                 Input("gv-add-plot-submit", "n_clicks"),
-                State("gv-add-plot-modal", "is_open"),
+                State("gv-add-plot-modal", "opened"),
                 prevent_initial_call=True,
             )
             def toggle_add_plot_modal(n_open, n_cancel, n_submit, is_open):
@@ -2432,26 +2262,24 @@ def _build_param_fields(
         elif spec.annotation in (int, float):
             field = html.Div(
                 [
-                    html.Label(label, style={"color": "#aaa", "fontSize": "11px"}),
-                    dbc.Input(
+                    dmc.NumberInput(
                         id={"type": "gv-param", "name": name},
-                        type="number",
+                        label=label,
                         value=default,
                         size="sm",
-                        style={"marginBottom": "4px"},
+                        mb="xs",
                     ),
                 ]
             )
         else:
             field = html.Div(
                 [
-                    html.Label(label, style={"color": "#aaa", "fontSize": "11px"}),
-                    dbc.Input(
+                    dmc.TextInput(
                         id={"type": "gv-param", "name": name},
-                        type="text",
+                        label=label,
                         value=str(default),
                         size="sm",
-                        style={"marginBottom": "4px"},
+                        mb="xs",
                     ),
                 ]
             )
@@ -2463,11 +2291,11 @@ def _build_param_fields(
 
 
 def _no_plot():
-    return html.Span("No plot available", style={"color": "#666"})
+    return html.Span("No plot available", style={"color": "var(--mantine-color-dimmed)"})
 
 
 def _no_data():
-    return html.Span("No data loaded", style={"color": "#666"})
+    return html.Span("No data loaded", style={"color": "var(--mantine-color-dimmed)"})
 
 
 def _render_outputs(items: list[OutputItem]):
@@ -2543,18 +2371,18 @@ def _data_table(df):
         columns=[{"name": c, "id": c} for c in df.columns],
         style_table={"overflowX": "auto"},
         style_header={
-            "backgroundColor": "#3a3a3a",
-            "color": "#e0e0e0",
+            "backgroundColor": "var(--mantine-color-default-hover)",
+            "color": "var(--mantine-color-text)",
             "fontWeight": "bold",
             "fontFamily": "monospace",
             "fontSize": "12px",
         },
         style_cell={
-            "backgroundColor": "#2a2a2a",
-            "color": "#d4d4d4",
+            "backgroundColor": "var(--mantine-color-default)",
+            "color": "var(--mantine-color-text)",
             "fontFamily": "monospace",
             "fontSize": "12px",
-            "border": "1px solid #444",
+            "border": "1px solid var(--mantine-color-default-border)",
             "padding": "4px 8px",
         },
         style_data_conditional=[

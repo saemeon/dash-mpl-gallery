@@ -126,53 +126,38 @@ class TestRenderTreeNode:
         assert result[2].id == {"type": "gv-tree-group", "index": "a/b"}
         assert result[3].id == {"type": "gv-nav-item", "index": "a/leaf2"}
 
-    def test_active_plot_styling(self):
+    def test_active_leaf_marked(self):
         tree = _build_sidebar_tree(["alpha", "beta"])
         result = _render_tree_node(tree, [], "alpha", {})
-        assert "3px solid #5b9bd5" in str(result[0].style.get("borderLeft", ""))
-        assert "transparent" in str(result[1].style.get("borderLeft", ""))
+        # NavLink uses the `active` prop directly; no manual borderLeft.
+        assert result[0].active is True
+        assert result[1].active is False
 
     def test_leaf_label_uses_last_segment(self):
         tree = _build_sidebar_tree(["group/my_plot"])
         result = _render_tree_node(tree, [], None, {})
         # group header, group Overview, then the leaf
-        leaf_div = result[2]
-        label_div = leaf_div.children[0]
-        assert label_div.children == "My Plot"
-
-    def test_description_rendered(self):
-        tree = _build_sidebar_tree(["plot_a"])
-        descs = {"plot_a": "A nice plot"}
-        result = _render_tree_node(tree, [], None, descs)
-        leaf_div = result[0]
-        desc_div = leaf_div.children[1]
-        assert desc_div.children == "A nice plot"
-
-    def test_no_description_renders_none(self):
-        tree = _build_sidebar_tree(["plot_a"])
-        result = _render_tree_node(tree, [], None, {})
-        leaf_div = result[0]
-        assert leaf_div.children[1] is None
+        leaf = result[2]
+        assert leaf.label == "My Plot"
 
     def test_indentation_increases_with_depth(self):
         tree = _build_sidebar_tree(["a/b/leaf"])
         result = _render_tree_node(tree, [], None, {})
-        # result[0]: a header at depth 0 — paddingLeft = 0*14+8 = 8
+        # result[0]: a group header (depth=0) — paddingLeft = 0*14+8 = 8
         assert result[0].style["paddingLeft"] == "8px"
-        # result[2]: b header at depth 1 — paddingLeft = 1*14+8 = 22
+        # result[2]: b group header (depth=1) — paddingLeft = 1*14+8 = 22
         assert result[2].style["paddingLeft"] == "22px"
-        # result[4]: leaf at depth 2 — paddingLeft = 2*14+10 = 38
-        assert result[4].style["paddingLeft"] == "38px"
+        # result[4]: leaf (depth=2) — paddingLeft = 2*14+12 = 40
+        assert result[4].style["paddingLeft"] == "40px"
 
-    def test_chevron_collapsed_vs_expanded(self):
+    def test_chevron_in_left_section(self):
         tree = _build_sidebar_tree(["g/x"])
         expanded = _render_tree_node(tree, [], None, {})
         collapsed = _render_tree_node(tree, ["g"], None, {})
-        # Expanded chevron is ▾, collapsed is ▸
-        expanded_chevron = expanded[0].children[0].children
-        collapsed_chevron = collapsed[0].children[0].children
-        assert expanded_chevron == "\u25be"
-        assert collapsed_chevron == "\u25b8"
+        # leftSection is a dmc.Text wrapper (so the glyph adopts theme
+        # color); the actual char is the wrapper's first child.
+        assert expanded[0].leftSection.children == "\u25be"
+        assert collapsed[0].leftSection.children == "\u25b8"
 
     def test_empty_tree(self):
         tree = _build_sidebar_tree([])
