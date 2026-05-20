@@ -16,7 +16,6 @@ import pytest
 from gallery_viewer import FileSystemBackend, ScriptSections
 from gallery_viewer.gallery import Gallery
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

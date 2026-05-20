@@ -13,7 +13,8 @@ from gallery_viewer.gallery import Gallery
 
 def full_layout_str(g: Gallery) -> str:
     """Stringify shell layout + detail page layout (mounted via dash.Pages)."""
-    return str(g.app.layout) + str(g._build_detail_layout())
+    from gallery_viewer.pages.detail import _build_detail_layout
+    return str(g.app.layout) + str(_build_detail_layout(g))
 
 
 @pytest.fixture
@@ -1377,7 +1378,6 @@ class TestVersionDiffLabel:
         assert color == "var(--mantine-color-dimmed)"
 
     def test_no_change_returns_grey_label(self, tmp_gallery):
-        from gallery_viewer._types import ScriptSections
 
         backend = FileSystemBackend(tmp_gallery)
         original = backend.load_script("20240101", "1")

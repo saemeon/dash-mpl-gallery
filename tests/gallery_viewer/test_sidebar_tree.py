@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-from dash import html
-
 from gallery_viewer.gallery import _build_sidebar_tree, _render_tree_node
-
 
 # ---------------------------------------------------------------------------
 # _build_sidebar_tree
