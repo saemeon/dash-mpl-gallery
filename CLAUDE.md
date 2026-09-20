@@ -359,3 +359,153 @@ Choices worth revisiting if the URL story expands:
    `group_axis=False` opt-in (hide the group dropdown, default group to a
    constant) could ship later for one-off-script galleries. Don't collapse
    in the storage layer — too much workflow lives on the split.
+
+---
+
+## Current debugging state (as of 2026-05-20, branch `main`, uncommitted)
+
+There is an open rendering bug in the running app: scripts/plots do not
+render. The handoff agent reported a 500 (`apply_url` writing to `gv-group`
+before the detail page mounts); the user separately observed that clicking
+RUN in the multiplot example shows **"Nothing to run."** in the console —
+i.e. the editor is empty when RUN fires. These are probably two symptoms of
+the same root cause: the `nav_click → init_groups_for_plot → update_versions
+→ load_version → editor` chain isn't completing.
+
+### Recent refactor (this branch, since `dce5877`)
+
+1. Buttons fix: refresh ↻ and new-group + buttons → `dmc.ActionIcon` (were
+   squished `dmc.Button`).
+2. Tag UI simplified: modal wizard → single `dmc.TagsInput` (−100 LOC, 2
+   callbacks instead of 3).
+3. **Detail callbacks moved**: 20 callbacks moved from
+   `Gallery._register_callbacks` → `pages/detail.py::_register_callbacks()`,
+   called from `bind()`, idempotent. `self.` → `_gallery.`.
+4. **Panel split**: detail layout broken into 10 composable panel functions
+   (`_panel_plot`, `_panel_console`, `_panel_data`, `_panel_selectors`,
+   `_panel_filter`, `_panel_tags`, `_panel_extras`, `_panel_params`,
+   `_panel_editor`, `_panel_actions`). Composed via a `LAYOUT` constant
+   (list of rows of (span, [panels])). `_build_detail_layout` moved from
+   `Gallery` → `pages/detail.py`.
+5. Selectors stacked vertically: group above version, action icons below.
+
+File sizes:
+- `src/gallery_viewer/gallery.py`: 1529 lines (was 2392)
+- `src/gallery_viewer/pages/detail.py`: ~1017 lines (was 41)
+- `src/gallery_viewer/pages/gallery.py`: 64 lines
+
+All 328 unit tests pass.
+
+### What's been verified
+
+- All 25 callbacks register (confirmed via `app._setup_server()` + reading
+  `app.callback_map`).
+- Detail layout produces all expected IDs: `gv-group`, `gv-version`,
+  `gv-editor-script`, `gv-output-panel`, `gv-data-panel`, `gv-console`,
+  `gv-param-fields`, `gv-tags-input`, `gv-tag-filter`, `gv-refresh-btn`,
+  `gv-new-group-btn`, etc. — confirmed by recursive traversal of the layout
+  returned by `pages.detail._layout()`.
+- `Gallery` facade works: `list_groups`, `list_versions`, `load_script` all
+  return correct data for the multiplot example (`financials/revenue_chart`
+  has groups `['20260325', '20260101']`, versions `['1','2','3','4']`,
+  script text 1192 chars).
+- `suppress_callback_exceptions=True` is set at `gallery.py:604`.
+
+### What's NOT verified
+
+- Whether `nav_click` actually fires when clicking a sidebar leaf (and
+  whether it successfully writes `gv-plot-select.data` + navigates).
+- Whether `init_groups_for_plot` (Input: `gv-plot-select.data`) fires on
+  initial detail-page mount or only after `gv-plot-select` changes.
+- Whether the cascade `gv-group.value → update_versions → load_version`
+  completes without a Dash error that aborts before the editor is populated.
+- Exact JS console / Network output during a real click — best captured by
+  the user with browser dev tools open.
+
+### Hypothesis (Option 3 from handoff)
+
+`apply_url` (in `pages/detail.py:540`) has Outputs targeting `gv-group.value`,
+`gv-version.value`, and `gv-plot-select.data`. Its Input is
+`_pages_location.search`, which lives in the shell. If the detail page is
+not yet mounted on initial load, the Output targets at `gv-group`/`gv-version`
+don't exist yet — `suppress_callback_exceptions=True` should tolerate this
+but the symptom suggests it doesn't in this configuration.
+
+Recommended fix: **split `apply_url`**.
+- Keep a shell-level callback writing only shell IDs (`gv-plot-select.data`,
+  `gv-url-overrides.data`).
+- Add a detail-page callback that reads `gv-url-overrides` + `gv-plot-select`
+  as State and propagates to `gv-group.value`/`gv-version.value` — runs only
+  when the detail page is mounted.
+
+### Likely culprits (ordered)
+
+1. **`apply_url` cross-page Output targets** (above) — most likely cause of
+   both the 500 and the empty editor.
+2. **Panel split lost a wrapping `html.Div`** that some callback targets.
+   Less likely now since the ID inventory check passed, but the *structure*
+   around an ID (`style={"display": ...}` toggle wrapper) could have changed.
+3. **`gv-editor-wrapper` / `gv-show-script` toggle** — if the wrapper's
+   nesting changed, the toggle callback's Output may write into a stale tree
+   that never re-mounts the editor.
+4. **`_panel_extras`** — if `g.extra_controls` is None and the panel returns
+   None inside `dmc.Stack`, Mantine may choke.
+
+### Recommended next steps for a fresh agent
+
+1. **Stop the running app on port 8050** so a fresh instance can be started
+   and driven.
+2. **Reproduce in browser first**: open the multiplot example
+   (`uv run python examples/gallery_multiplot_demo.py`), open the JS
+   console, click a leaf, capture the exact error (likely a 422
+   "non-existing object" callback error from Dash, with the offending ID
+   and property in the message).
+3. **Bisect if unclear**: `git stash` to revert the uncommitted refactor,
+   confirm the app worked at `dce5877`, then re-apply step-by-step.
+4. **Apply Option 3** (split `apply_url`) as the leading hypothesis; verify
+   in browser that scripts/plots render.
+5. **Drain the post-fix queue** (see handoff): drop last `dbc.Checkbox`,
+   dirty-warning UX, copy-link button, keyboard shortcuts, inline
+   `_descend_to_group` + `_count_descendant_leaves`, consolidate
+   `gv-plot-select` into `gv-context`.
+
+### Key architectural notes for fix work
+
+- `apply_url` is now in `pages/detail.py:540` — this likely needs to move
+  (or split) so its shell-level Outputs stay registered against the shell.
+- `bind(gallery)` pattern: each page module stores a module-level `_gallery`
+  reference set by `bind()`. Callbacks close over `_gallery`. `bind()` is
+  called once from `Gallery._build_app` and is idempotent.
+- Theme switcher lives in `Gallery._register_callbacks` (shell concern):
+  `gv-theme-store` (localStorage) → `gv-mantine-provider.{forceColorScheme,theme}`.
+- Edit buffer (`gv-edit-buffer`, session-scoped) preserves unsaved editor
+  state across page transitions. `init_groups_for_plot` and `update_versions`
+  prefer the buffer's group/version on remount.
+- Panel-based layout: `pages/detail.py:LAYOUT` is a list of rows × columns ×
+  panel-functions. Rearranging = edit the constant. Adding a panel = write
+  `_panel_xxx(g)` and reference it.
+- `pages/detail.py` imports helpers from `gallery.py` (`_CONSOLE_STYLE`,
+  `_SECTION_LABEL`, `_make_editor`, `_no_data`, `_no_plot`). Could move to
+  a shared module if needed.
+
+### Quick test commands
+
+```bash
+# Run all unit tests (328 passing):
+uv run pytest dash-script-gallery/tests/gallery_viewer/ -q
+
+# Smoke test app build (verifies callbacks register, layout IDs present):
+uv run python -c "
+import tempfile; from pathlib import Path
+from gallery_viewer import Gallery
+from gallery_viewer.backend import FileSystemBackend
+with tempfile.TemporaryDirectory() as t:
+    d = Path(t)/'p'; d.mkdir()
+    g = Gallery(backends={'p': FileSystemBackend(d)})
+    _ = g.app
+"
+
+# Run the multiplot example app (NOTE: the file is gallery_multiplot_demo.py
+# at the examples/ root, NOT examples/gallery_multiplot/app.py):
+uv run python dash-script-gallery/examples/gallery_multiplot_demo.py
+```
